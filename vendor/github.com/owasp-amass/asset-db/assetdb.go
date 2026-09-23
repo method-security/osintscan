@@ -23,6 +23,11 @@ func New(dbType repository.DBType, dsn string) *AssetDB {
 	}
 }
 
+// GetDBType returns the type of the underlying database.
+func (as *AssetDB) GetDBType() string {
+	return as.repository.GetDBType()
+}
+
 // Create creates a new asset in the database.
 // If source is nil, the discovered asset will be created and relation will be ignored
 // If source and relation are provided, the asset is created and linked to the source asset using the specified relation.
@@ -96,4 +101,22 @@ func (as *AssetDB) IncomingRelations(asset *types.Asset, since time.Time, relati
 // If no `relationTypes` are specified, all outgoing relations are returned.
 func (as *AssetDB) OutgoingRelations(asset *types.Asset, since time.Time, relationTypes ...string) ([]*types.Relation, error) {
 	return as.repository.OutgoingRelations(asset, since, relationTypes...)
+}
+
+// RawQuery executes a query defined by the provided sqlstr on the asset-db.
+// The results of the executed query are scanned into the provided slice.
+func (as *AssetDB) RawQuery(sqlstr string, results interface{}) error {
+	return as.repository.RawQuery(sqlstr, results)
+}
+
+// AssetQuery executes a query against the asset table of the db.
+// For SQL databases, the query will start with "SELECT * FROM assets " and then add the necessary constraints.
+func (as *AssetDB) AssetQuery(constraints string) ([]*types.Asset, error) {
+	return as.repository.AssetQuery(constraints)
+}
+
+// RelationQuery executes a query against the relation table of the db.
+// For SQL databases, the query will start with "SELECT * FROM relations " and then add the necessary constraints.
+func (as *AssetDB) RelationQuery(constraints string) ([]*types.Relation, error) {
+	return as.repository.RelationQuery(constraints)
 }

@@ -3,7 +3,7 @@ groups:
   local:
     generators:
       - name: fernapi/fern-go-sdk
-        version: 1.46.4
+        version: 1.60.2
         config:
           importPath: github.com/Method-Security/osintscan/generated/go
         output:

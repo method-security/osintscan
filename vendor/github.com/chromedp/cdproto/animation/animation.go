@@ -63,7 +63,7 @@ func GetCurrentTime(id string) *GetCurrentTimeParams {
 
 // GetCurrentTimeReturns return values.
 type GetCurrentTimeReturns struct {
-	CurrentTime float64 `json:"currentTime,omitempty"` // Current time of the page.
+	CurrentTime float64 `json:"currentTime,omitempty,omitzero"` // Current time of the page.
 }
 
 // Do executes Animation.getCurrentTime against the provided context.
@@ -94,7 +94,7 @@ func GetPlaybackRate() *GetPlaybackRateParams {
 
 // GetPlaybackRateReturns return values.
 type GetPlaybackRateReturns struct {
-	PlaybackRate float64 `json:"playbackRate,omitempty"` // Playback rate for animations on page.
+	PlaybackRate float64 `json:"playbackRate,omitempty,omitzero"` // Playback rate for animations on page.
 }
 
 // Do executes Animation.getPlaybackRate against the provided context.
@@ -158,7 +158,7 @@ func ResolveAnimation(animationID string) *ResolveAnimationParams {
 
 // ResolveAnimationReturns return values.
 type ResolveAnimationReturns struct {
-	RemoteObject *runtime.RemoteObject `json:"remoteObject,omitempty"` // Corresponding remote object.
+	RemoteObject *runtime.RemoteObject `json:"remoteObject,omitempty,omitzero"` // Corresponding remote object.
 }
 
 // Do executes Animation.resolveAnimation against the provided context.
@@ -180,8 +180,9 @@ func (p *ResolveAnimationParams) Do(ctx context.Context) (remoteObject *runtime.
 // SeekAnimationsParams seek a set of animations to a particular time within
 // each animation.
 type SeekAnimationsParams struct {
-	Animations  []string `json:"animations"`  // List of animation ids to seek.
-	CurrentTime float64  `json:"currentTime"` // Set the current time of each animation.
+	Animations   []string  `json:"animations"`                      // List of animation ids to seek.
+	CurrentTime  float64   `json:"currentTime,omitempty,omitzero"`  // Set each animation to the same time.
+	CurrentTimes []float64 `json:"currentTimes,omitempty,omitzero"` // Set each animation to a different time. If set, should have the same length as animations. Exactly one of currentTime or currentTimes should be set.
 }
 
 // SeekAnimations seek a set of animations to a particular time within each
@@ -192,12 +193,24 @@ type SeekAnimationsParams struct {
 // parameters:
 //
 //	animations - List of animation ids to seek.
-//	currentTime - Set the current time of each animation.
-func SeekAnimations(animations []string, currentTime float64) *SeekAnimationsParams {
+func SeekAnimations(animations []string) *SeekAnimationsParams {
 	return &SeekAnimationsParams{
-		Animations:  animations,
-		CurrentTime: currentTime,
+		Animations: animations,
 	}
+}
+
+// WithCurrentTime set each animation to the same time.
+func (p SeekAnimationsParams) WithCurrentTime(currentTime float64) *SeekAnimationsParams {
+	p.CurrentTime = currentTime
+	return &p
+}
+
+// WithCurrentTimes set each animation to a different time. If set, should
+// have the same length as animations. Exactly one of currentTime or
+// currentTimes should be set.
+func (p SeekAnimationsParams) WithCurrentTimes(currentTimes []float64) *SeekAnimationsParams {
+	p.CurrentTimes = currentTimes
+	return &p
 }
 
 // Do executes Animation.seekAnimations against the provided context.

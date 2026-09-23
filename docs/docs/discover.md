@@ -65,10 +65,10 @@ Usage:
 
 Flags:
       --domain string                The domain name to check against CDN provider ranges
-      --dns-resolvers stringSlice    Custom DNS resolver/servers to use
+      --dns-resolvers strings        Custom DNS resolvers (e.g. 10.0.0.1:53).
       --fingerprints-file string     The path to the CDN fingerprints file
   -h, --help                        help for cdn
-      --ip-addresses stringSlice    IP addresses to check against CDN provider ranges
+      --ip-addresses strings        IP addresses or CIDRs to check (e.g. 1.2.3.4 or 1.2.3.0/24)
 
 Global Flags:
   -o, --output string        Output format (signal, json, yaml). Default value is signal (default "signal")
@@ -140,10 +140,11 @@ osintscan discover dns [command]
 #### Available Subcommands
 
 - **certs**: Retrieve SSL/TLS certificates for domains
+- **cctld**: Discover alternate country-code apex domains
 - **records**: Fetch DNS records (A, AAAA, MX, TXT, etc.)
 - **forward**: Perform forward DNS lookups
 - **reverse**: Perform reverse DNS lookups on IPs/CIDRs
-- **subdomain**: Subdomain discovery (active, correlation, passive)
+- **subdomain**: Subdomain discovery (active and passive)
 
 #### Certs
 
@@ -218,7 +219,7 @@ Usage:
   osintscan discover dns forward [flags]
 
 Flags:
-      --dns-resolvers stringSlice   Custom DNS resolver/servers
+      --dns-resolvers strings   Custom DNS resolvers (e.g. 10.0.0.1).
       --domain string              Domain name to perform forward lookups on
   -h, --help                      help for forward
 
@@ -260,6 +261,31 @@ Global Flags:
   -v, --verbose              Verbose output
 ```
 
+#### ccTLD
+
+Generate country-code TLD variants of a domain and resolve their A, AAAA, NS, and MX records.
+
+##### Usage
+```bash
+osintscan discover dns cctld --domain example.com --cctlds-preset TOP50
+osintscan discover dns cctld --domain example.com --cctlds ru,cn,de
+```
+
+##### Help Text
+```bash
+Usage:
+  osintscan discover dns cctld [flags]
+
+Flags:
+      --cctlds strings          Explicit list of ccTLD labels to test (e.g. ru,cn,de)
+      --cctlds-preset string    Named preset of ccTLDs: APT_RELEVANT, TOP50, EU27, ASEAN, ALL
+      --dns-resolvers strings   Custom DNS resolvers (e.g. 1.1.1.1,8.8.8.8)
+      --domain string           The domain name to pivot ccTLDs from (e.g. acme.com)
+  -h, --help                    help for cctld
+      --threads int             Number of concurrent DNS probe goroutines (default 50)
+      --timeout int             Per-request timeout in milliseconds for DNS probes (default 5000)
+```
+
 #### Subdomain
 
 Discover subdomains using various techniques.
@@ -297,36 +323,6 @@ Flags:
       --wildcard-checks int     Number of random subdomain probes used to detect wildcard DNS records (default 5)
       --wordlist-file string    The file containing the wordlist to use for discovery
       --wordlist-size string    The size of the in-built wordlist to use for discovery (default "SMALL")
-
-Global Flags:
-  -o, --output string        Output format (signal, json, yaml). Default value is signal (default "signal")
-  -f, --output-file string   Path to output file. If blank, will output to STDOUT
-  -q, --quiet                Suppress output
-  -v, --verbose              Verbose output
-```
-
-##### Correlation
-
-Correlate subdomains across multiple domains using active data sources.
-
-###### Usage
-```bash
-osintscan discover dns subdomain correlation --domains example.com,test.com
-```
-
-###### Help Text
-```bash
-Correlate subdomains across multiple domains using active data sources (no direct interaction with the target).
-
-Usage:
-  osintscan discover dns subdomain correlation [flags]
-
-Flags:
-      --dns-resolvers strings   Custom DNS resolver/servers to use for queries (e.g. 1.1.1.1:53)
-      --domains strings         The domains to test
-  -h, --help                    help for correlation
-      --threads int             Number of parallel threads to use for testing (default 10)
-      --timeout int             Maximum time (in seconds) to spend on each lookup
 
 Global Flags:
   -o, --output string        Output format (signal, json, yaml). Default value is signal (default "signal")

@@ -11,41 +11,45 @@ import (
 
 	"github.com/chromedp/cdproto/cdp"
 	"github.com/chromedp/cdproto/network"
-	"github.com/mailru/easyjson"
 )
 
-// GetStorageKeyForFrameParams returns a storage key given a frame id.
-type GetStorageKeyForFrameParams struct {
-	FrameID cdp.FrameID `json:"frameId"`
+// GetStorageKeyParams returns storage key for the given frame. If no frame
+// ID is provided, the storage key of the target executing this command is
+// returned.
+type GetStorageKeyParams struct {
+	FrameID cdp.FrameID `json:"frameId,omitempty,omitzero"`
 }
 
-// GetStorageKeyForFrame returns a storage key given a frame id.
+// GetStorageKey returns storage key for the given frame. If no frame ID is
+// provided, the storage key of the target executing this command is returned.
 //
-// See: https://chromedevtools.github.io/devtools-protocol/tot/Storage#method-getStorageKeyForFrame
+// See: https://chromedevtools.github.io/devtools-protocol/tot/Storage#method-getStorageKey
 //
 // parameters:
-//
-//	frameID
-func GetStorageKeyForFrame(frameID cdp.FrameID) *GetStorageKeyForFrameParams {
-	return &GetStorageKeyForFrameParams{
-		FrameID: frameID,
-	}
+func GetStorageKey() *GetStorageKeyParams {
+	return &GetStorageKeyParams{}
 }
 
-// GetStorageKeyForFrameReturns return values.
-type GetStorageKeyForFrameReturns struct {
-	StorageKey SerializedStorageKey `json:"storageKey,omitempty"`
+// WithFrameID [no description].
+func (p GetStorageKeyParams) WithFrameID(frameID cdp.FrameID) *GetStorageKeyParams {
+	p.FrameID = frameID
+	return &p
 }
 
-// Do executes Storage.getStorageKeyForFrame against the provided context.
+// GetStorageKeyReturns return values.
+type GetStorageKeyReturns struct {
+	StorageKey SerializedStorageKey `json:"storageKey,omitempty,omitzero"`
+}
+
+// Do executes Storage.getStorageKey against the provided context.
 //
 // returns:
 //
 //	storageKey
-func (p *GetStorageKeyForFrameParams) Do(ctx context.Context) (storageKey SerializedStorageKey, err error) {
+func (p *GetStorageKeyParams) Do(ctx context.Context) (storageKey SerializedStorageKey, err error) {
 	// execute
-	var res GetStorageKeyForFrameReturns
-	err = cdp.Execute(ctx, CommandGetStorageKeyForFrame, p, &res)
+	var res GetStorageKeyReturns
+	err = cdp.Execute(ctx, CommandGetStorageKey, p, &res)
 	if err != nil {
 		return "", err
 	}
@@ -107,7 +111,7 @@ func (p *ClearDataForStorageKeyParams) Do(ctx context.Context) (err error) {
 
 // GetCookiesParams returns all browser cookies.
 type GetCookiesParams struct {
-	BrowserContextID cdp.BrowserContextID `json:"browserContextId,omitempty"` // Browser context to use when called on the browser endpoint.
+	BrowserContextID cdp.BrowserContextID `json:"browserContextId,omitempty,omitzero"` // Browser context to use when called on the browser endpoint.
 }
 
 // GetCookies returns all browser cookies.
@@ -128,7 +132,7 @@ func (p GetCookiesParams) WithBrowserContextID(browserContextID cdp.BrowserConte
 
 // GetCookiesReturns return values.
 type GetCookiesReturns struct {
-	Cookies []*network.Cookie `json:"cookies,omitempty"` // Array of cookie objects.
+	Cookies []*network.Cookie `json:"cookies,omitempty,omitzero"` // Array of cookie objects.
 }
 
 // Do executes Storage.getCookies against the provided context.
@@ -149,8 +153,8 @@ func (p *GetCookiesParams) Do(ctx context.Context) (cookies []*network.Cookie, e
 
 // SetCookiesParams sets given cookies.
 type SetCookiesParams struct {
-	Cookies          []*network.CookieParam `json:"cookies"`                    // Cookies to be set.
-	BrowserContextID cdp.BrowserContextID   `json:"browserContextId,omitempty"` // Browser context to use when called on the browser endpoint.
+	Cookies          []*network.CookieParam `json:"cookies"`                             // Cookies to be set.
+	BrowserContextID cdp.BrowserContextID   `json:"browserContextId,omitempty,omitzero"` // Browser context to use when called on the browser endpoint.
 }
 
 // SetCookies sets given cookies.
@@ -180,7 +184,7 @@ func (p *SetCookiesParams) Do(ctx context.Context) (err error) {
 
 // ClearCookiesParams clears cookies.
 type ClearCookiesParams struct {
-	BrowserContextID cdp.BrowserContextID `json:"browserContextId,omitempty"` // Browser context to use when called on the browser endpoint.
+	BrowserContextID cdp.BrowserContextID `json:"browserContextId,omitempty,omitzero"` // Browser context to use when called on the browser endpoint.
 }
 
 // ClearCookies clears cookies.
@@ -224,10 +228,10 @@ func GetUsageAndQuota(origin string) *GetUsageAndQuotaParams {
 
 // GetUsageAndQuotaReturns return values.
 type GetUsageAndQuotaReturns struct {
-	Usage          float64         `json:"usage,omitempty"`          // Storage usage (bytes).
-	Quota          float64         `json:"quota,omitempty"`          // Storage quota (bytes).
-	OverrideActive bool            `json:"overrideActive,omitempty"` // Whether or not the origin has an active storage quota override
-	UsageBreakdown []*UsageForType `json:"usageBreakdown,omitempty"` // Storage usage per type (bytes).
+	Usage          float64         `json:"usage,omitempty,omitzero"`          // Storage usage (bytes).
+	Quota          float64         `json:"quota,omitempty,omitzero"`          // Storage quota (bytes).
+	OverrideActive bool            `json:"overrideActive"`                    // Whether or not the origin has an active storage quota override
+	UsageBreakdown []*UsageForType `json:"usageBreakdown,omitempty,omitzero"` // Storage usage per type (bytes).
 }
 
 // Do executes Storage.getUsageAndQuota against the provided context.
@@ -251,8 +255,8 @@ func (p *GetUsageAndQuotaParams) Do(ctx context.Context) (usage float64, quota f
 
 // OverrideQuotaForOriginParams override quota for the specified origin.
 type OverrideQuotaForOriginParams struct {
-	Origin    string  `json:"origin"`              // Security origin.
-	QuotaSize float64 `json:"quotaSize,omitempty"` // The quota size (in bytes) to override the original quota with. If this is called multiple times, the overridden quota will be equal to the quotaSize provided in the final call. If this is called without specifying a quotaSize, the quota will be reset to the default value for the specified origin. If this is called multiple times with different origins, the override will be maintained for each origin until it is disabled (called without a quotaSize).
+	Origin    string  `json:"origin"`                       // Security origin.
+	QuotaSize float64 `json:"quotaSize,omitempty,omitzero"` // The quota size (in bytes) to override the original quota with. If this is called multiple times, the overridden quota will be equal to the quotaSize provided in the final call. If this is called without specifying a quotaSize, the quota will be reset to the default value for the specified origin. If this is called multiple times with different origins, the override will be maintained for each origin until it is disabled (called without a quotaSize).
 }
 
 // OverrideQuotaForOrigin override quota for the specified origin.
@@ -499,7 +503,7 @@ func GetTrustTokens() *GetTrustTokensParams {
 
 // GetTrustTokensReturns return values.
 type GetTrustTokensReturns struct {
-	Tokens []*TrustTokens `json:"tokens,omitempty"`
+	Tokens []*TrustTokens `json:"tokens,omitempty,omitzero"`
 }
 
 // Do executes Storage.getTrustTokens against the provided context.
@@ -542,7 +546,7 @@ func ClearTrustTokens(issuerOrigin string) *ClearTrustTokensParams {
 
 // ClearTrustTokensReturns return values.
 type ClearTrustTokensReturns struct {
-	DidDeleteTokens bool `json:"didDeleteTokens,omitempty"` // True if any tokens were deleted, false otherwise.
+	DidDeleteTokens bool `json:"didDeleteTokens"` // True if any tokens were deleted, false otherwise.
 }
 
 // Do executes Storage.clearTrustTokens against the provided context.
@@ -561,321 +565,112 @@ func (p *ClearTrustTokensParams) Do(ctx context.Context) (didDeleteTokens bool, 
 	return res.DidDeleteTokens, nil
 }
 
-// GetInterestGroupDetailsParams gets details for a named interest group.
-type GetInterestGroupDetailsParams struct {
-	OwnerOrigin string `json:"ownerOrigin"`
-	Name        string `json:"name"`
+// GetPrivateVerificationTokensParams returns all stored Private Verification
+// Tokens for the current browsing context.
+type GetPrivateVerificationTokensParams struct{}
+
+// GetPrivateVerificationTokens returns all stored Private Verification
+// Tokens for the current browsing context.
+//
+// See: https://chromedevtools.github.io/devtools-protocol/tot/Storage#method-getPrivateVerificationTokens
+func GetPrivateVerificationTokens() *GetPrivateVerificationTokensParams {
+	return &GetPrivateVerificationTokensParams{}
 }
 
-// GetInterestGroupDetails gets details for a named interest group.
-//
-// See: https://chromedevtools.github.io/devtools-protocol/tot/Storage#method-getInterestGroupDetails
-//
-// parameters:
-//
-//	ownerOrigin
-//	name
-func GetInterestGroupDetails(ownerOrigin string, name string) *GetInterestGroupDetailsParams {
-	return &GetInterestGroupDetailsParams{
-		OwnerOrigin: ownerOrigin,
-		Name:        name,
-	}
+// GetPrivateVerificationTokensReturns return values.
+type GetPrivateVerificationTokensReturns struct {
+	Tokens []*PrivateVerificationToken `json:"tokens,omitempty,omitzero"`
 }
 
-// GetInterestGroupDetailsReturns return values.
-type GetInterestGroupDetailsReturns struct {
-	Details easyjson.RawMessage `json:"details,omitempty"`
-}
-
-// Do executes Storage.getInterestGroupDetails against the provided context.
+// Do executes Storage.getPrivateVerificationTokens against the provided context.
 //
 // returns:
 //
-//	details - This largely corresponds to: https://wicg.github.io/turtledove/#dictdef-generatebidinterestgroup but has absolute expirationTime instead of relative lifetimeMs and also adds joiningOrigin.
-func (p *GetInterestGroupDetailsParams) Do(ctx context.Context) (details easyjson.RawMessage, err error) {
+//	tokens
+func (p *GetPrivateVerificationTokensParams) Do(ctx context.Context) (tokens []*PrivateVerificationToken, err error) {
 	// execute
-	var res GetInterestGroupDetailsReturns
-	err = cdp.Execute(ctx, CommandGetInterestGroupDetails, p, &res)
+	var res GetPrivateVerificationTokensReturns
+	err = cdp.Execute(ctx, CommandGetPrivateVerificationTokens, nil, &res)
 	if err != nil {
 		return nil, err
 	}
 
-	return res.Details, nil
+	return res.Tokens, nil
 }
 
-// SetInterestGroupTrackingParams enables/Disables issuing of
-// interestGroupAccessed events.
-type SetInterestGroupTrackingParams struct {
+// ClearPrivateVerificationTokensParams removes all Private Verification
+// Tokens issued by the provided issuerOrigin.
+type ClearPrivateVerificationTokensParams struct {
+	IssuerOrigin string `json:"issuerOrigin"`
+}
+
+// ClearPrivateVerificationTokens removes all Private Verification Tokens
+// issued by the provided issuerOrigin.
+//
+// See: https://chromedevtools.github.io/devtools-protocol/tot/Storage#method-clearPrivateVerificationTokens
+//
+// parameters:
+//
+//	issuerOrigin
+func ClearPrivateVerificationTokens(issuerOrigin string) *ClearPrivateVerificationTokensParams {
+	return &ClearPrivateVerificationTokensParams{
+		IssuerOrigin: issuerOrigin,
+	}
+}
+
+// Do executes Storage.clearPrivateVerificationTokens against the provided context.
+func (p *ClearPrivateVerificationTokensParams) Do(ctx context.Context) (err error) {
+	return cdp.Execute(ctx, CommandClearPrivateVerificationTokens, p, nil)
+}
+
+// DeletePrivateVerificationTokenParams removes a specific Private
+// Verification Token by its ID.
+type DeletePrivateVerificationTokenParams struct {
+	TokenID string `json:"tokenId"`
+}
+
+// DeletePrivateVerificationToken removes a specific Private Verification
+// Token by its ID.
+//
+// See: https://chromedevtools.github.io/devtools-protocol/tot/Storage#method-deletePrivateVerificationToken
+//
+// parameters:
+//
+//	tokenID
+func DeletePrivateVerificationToken(tokenID string) *DeletePrivateVerificationTokenParams {
+	return &DeletePrivateVerificationTokenParams{
+		TokenID: tokenID,
+	}
+}
+
+// Do executes Storage.deletePrivateVerificationToken against the provided context.
+func (p *DeletePrivateVerificationTokenParams) Do(ctx context.Context) (err error) {
+	return cdp.Execute(ctx, CommandDeletePrivateVerificationToken, p, nil)
+}
+
+// SetPrivateVerificationTokensTrackingParams set tracking for Private
+// Verification Tokens.
+type SetPrivateVerificationTokensTrackingParams struct {
 	Enable bool `json:"enable"`
 }
 
-// SetInterestGroupTracking enables/Disables issuing of interestGroupAccessed
-// events.
+// SetPrivateVerificationTokensTracking set tracking for Private Verification
+// Tokens.
 //
-// See: https://chromedevtools.github.io/devtools-protocol/tot/Storage#method-setInterestGroupTracking
+// See: https://chromedevtools.github.io/devtools-protocol/tot/Storage#method-setPrivateVerificationTokensTracking
 //
 // parameters:
 //
 //	enable
-func SetInterestGroupTracking(enable bool) *SetInterestGroupTrackingParams {
-	return &SetInterestGroupTrackingParams{
+func SetPrivateVerificationTokensTracking(enable bool) *SetPrivateVerificationTokensTrackingParams {
+	return &SetPrivateVerificationTokensTrackingParams{
 		Enable: enable,
 	}
 }
 
-// Do executes Storage.setInterestGroupTracking against the provided context.
-func (p *SetInterestGroupTrackingParams) Do(ctx context.Context) (err error) {
-	return cdp.Execute(ctx, CommandSetInterestGroupTracking, p, nil)
-}
-
-// SetInterestGroupAuctionTrackingParams enables/Disables issuing of
-// interestGroupAuctionEventOccurred and
-// interestGroupAuctionNetworkRequestCreated.
-type SetInterestGroupAuctionTrackingParams struct {
-	Enable bool `json:"enable"`
-}
-
-// SetInterestGroupAuctionTracking enables/Disables issuing of
-// interestGroupAuctionEventOccurred and
-// interestGroupAuctionNetworkRequestCreated.
-//
-// See: https://chromedevtools.github.io/devtools-protocol/tot/Storage#method-setInterestGroupAuctionTracking
-//
-// parameters:
-//
-//	enable
-func SetInterestGroupAuctionTracking(enable bool) *SetInterestGroupAuctionTrackingParams {
-	return &SetInterestGroupAuctionTrackingParams{
-		Enable: enable,
-	}
-}
-
-// Do executes Storage.setInterestGroupAuctionTracking against the provided context.
-func (p *SetInterestGroupAuctionTrackingParams) Do(ctx context.Context) (err error) {
-	return cdp.Execute(ctx, CommandSetInterestGroupAuctionTracking, p, nil)
-}
-
-// GetSharedStorageMetadataParams gets metadata for an origin's shared
-// storage.
-type GetSharedStorageMetadataParams struct {
-	OwnerOrigin string `json:"ownerOrigin"`
-}
-
-// GetSharedStorageMetadata gets metadata for an origin's shared storage.
-//
-// See: https://chromedevtools.github.io/devtools-protocol/tot/Storage#method-getSharedStorageMetadata
-//
-// parameters:
-//
-//	ownerOrigin
-func GetSharedStorageMetadata(ownerOrigin string) *GetSharedStorageMetadataParams {
-	return &GetSharedStorageMetadataParams{
-		OwnerOrigin: ownerOrigin,
-	}
-}
-
-// GetSharedStorageMetadataReturns return values.
-type GetSharedStorageMetadataReturns struct {
-	Metadata *SharedStorageMetadata `json:"metadata,omitempty"`
-}
-
-// Do executes Storage.getSharedStorageMetadata against the provided context.
-//
-// returns:
-//
-//	metadata
-func (p *GetSharedStorageMetadataParams) Do(ctx context.Context) (metadata *SharedStorageMetadata, err error) {
-	// execute
-	var res GetSharedStorageMetadataReturns
-	err = cdp.Execute(ctx, CommandGetSharedStorageMetadata, p, &res)
-	if err != nil {
-		return nil, err
-	}
-
-	return res.Metadata, nil
-}
-
-// GetSharedStorageEntriesParams gets the entries in an given origin's shared
-// storage.
-type GetSharedStorageEntriesParams struct {
-	OwnerOrigin string `json:"ownerOrigin"`
-}
-
-// GetSharedStorageEntries gets the entries in an given origin's shared
-// storage.
-//
-// See: https://chromedevtools.github.io/devtools-protocol/tot/Storage#method-getSharedStorageEntries
-//
-// parameters:
-//
-//	ownerOrigin
-func GetSharedStorageEntries(ownerOrigin string) *GetSharedStorageEntriesParams {
-	return &GetSharedStorageEntriesParams{
-		OwnerOrigin: ownerOrigin,
-	}
-}
-
-// GetSharedStorageEntriesReturns return values.
-type GetSharedStorageEntriesReturns struct {
-	Entries []*SharedStorageEntry `json:"entries,omitempty"`
-}
-
-// Do executes Storage.getSharedStorageEntries against the provided context.
-//
-// returns:
-//
-//	entries
-func (p *GetSharedStorageEntriesParams) Do(ctx context.Context) (entries []*SharedStorageEntry, err error) {
-	// execute
-	var res GetSharedStorageEntriesReturns
-	err = cdp.Execute(ctx, CommandGetSharedStorageEntries, p, &res)
-	if err != nil {
-		return nil, err
-	}
-
-	return res.Entries, nil
-}
-
-// SetSharedStorageEntryParams sets entry with key and value for a given
-// origin's shared storage.
-type SetSharedStorageEntryParams struct {
-	OwnerOrigin     string `json:"ownerOrigin"`
-	Key             string `json:"key"`
-	Value           string `json:"value"`
-	IgnoreIfPresent bool   `json:"ignoreIfPresent,omitempty"` // If ignoreIfPresent is included and true, then only sets the entry if key doesn't already exist.
-}
-
-// SetSharedStorageEntry sets entry with key and value for a given origin's
-// shared storage.
-//
-// See: https://chromedevtools.github.io/devtools-protocol/tot/Storage#method-setSharedStorageEntry
-//
-// parameters:
-//
-//	ownerOrigin
-//	key
-//	value
-func SetSharedStorageEntry(ownerOrigin string, key string, value string) *SetSharedStorageEntryParams {
-	return &SetSharedStorageEntryParams{
-		OwnerOrigin: ownerOrigin,
-		Key:         key,
-		Value:       value,
-	}
-}
-
-// WithIgnoreIfPresent if ignoreIfPresent is included and true, then only
-// sets the entry if key doesn't already exist.
-func (p SetSharedStorageEntryParams) WithIgnoreIfPresent(ignoreIfPresent bool) *SetSharedStorageEntryParams {
-	p.IgnoreIfPresent = ignoreIfPresent
-	return &p
-}
-
-// Do executes Storage.setSharedStorageEntry against the provided context.
-func (p *SetSharedStorageEntryParams) Do(ctx context.Context) (err error) {
-	return cdp.Execute(ctx, CommandSetSharedStorageEntry, p, nil)
-}
-
-// DeleteSharedStorageEntryParams deletes entry for key (if it exists) for a
-// given origin's shared storage.
-type DeleteSharedStorageEntryParams struct {
-	OwnerOrigin string `json:"ownerOrigin"`
-	Key         string `json:"key"`
-}
-
-// DeleteSharedStorageEntry deletes entry for key (if it exists) for a given
-// origin's shared storage.
-//
-// See: https://chromedevtools.github.io/devtools-protocol/tot/Storage#method-deleteSharedStorageEntry
-//
-// parameters:
-//
-//	ownerOrigin
-//	key
-func DeleteSharedStorageEntry(ownerOrigin string, key string) *DeleteSharedStorageEntryParams {
-	return &DeleteSharedStorageEntryParams{
-		OwnerOrigin: ownerOrigin,
-		Key:         key,
-	}
-}
-
-// Do executes Storage.deleteSharedStorageEntry against the provided context.
-func (p *DeleteSharedStorageEntryParams) Do(ctx context.Context) (err error) {
-	return cdp.Execute(ctx, CommandDeleteSharedStorageEntry, p, nil)
-}
-
-// ClearSharedStorageEntriesParams clears all entries for a given origin's
-// shared storage.
-type ClearSharedStorageEntriesParams struct {
-	OwnerOrigin string `json:"ownerOrigin"`
-}
-
-// ClearSharedStorageEntries clears all entries for a given origin's shared
-// storage.
-//
-// See: https://chromedevtools.github.io/devtools-protocol/tot/Storage#method-clearSharedStorageEntries
-//
-// parameters:
-//
-//	ownerOrigin
-func ClearSharedStorageEntries(ownerOrigin string) *ClearSharedStorageEntriesParams {
-	return &ClearSharedStorageEntriesParams{
-		OwnerOrigin: ownerOrigin,
-	}
-}
-
-// Do executes Storage.clearSharedStorageEntries against the provided context.
-func (p *ClearSharedStorageEntriesParams) Do(ctx context.Context) (err error) {
-	return cdp.Execute(ctx, CommandClearSharedStorageEntries, p, nil)
-}
-
-// ResetSharedStorageBudgetParams resets the budget for ownerOrigin by
-// clearing all budget withdrawals.
-type ResetSharedStorageBudgetParams struct {
-	OwnerOrigin string `json:"ownerOrigin"`
-}
-
-// ResetSharedStorageBudget resets the budget for ownerOrigin by clearing all
-// budget withdrawals.
-//
-// See: https://chromedevtools.github.io/devtools-protocol/tot/Storage#method-resetSharedStorageBudget
-//
-// parameters:
-//
-//	ownerOrigin
-func ResetSharedStorageBudget(ownerOrigin string) *ResetSharedStorageBudgetParams {
-	return &ResetSharedStorageBudgetParams{
-		OwnerOrigin: ownerOrigin,
-	}
-}
-
-// Do executes Storage.resetSharedStorageBudget against the provided context.
-func (p *ResetSharedStorageBudgetParams) Do(ctx context.Context) (err error) {
-	return cdp.Execute(ctx, CommandResetSharedStorageBudget, p, nil)
-}
-
-// SetSharedStorageTrackingParams enables/disables issuing of
-// sharedStorageAccessed events.
-type SetSharedStorageTrackingParams struct {
-	Enable bool `json:"enable"`
-}
-
-// SetSharedStorageTracking enables/disables issuing of sharedStorageAccessed
-// events.
-//
-// See: https://chromedevtools.github.io/devtools-protocol/tot/Storage#method-setSharedStorageTracking
-//
-// parameters:
-//
-//	enable
-func SetSharedStorageTracking(enable bool) *SetSharedStorageTrackingParams {
-	return &SetSharedStorageTrackingParams{
-		Enable: enable,
-	}
-}
-
-// Do executes Storage.setSharedStorageTracking against the provided context.
-func (p *SetSharedStorageTrackingParams) Do(ctx context.Context) (err error) {
-	return cdp.Execute(ctx, CommandSetSharedStorageTracking, p, nil)
+// Do executes Storage.setPrivateVerificationTokensTracking against the provided context.
+func (p *SetPrivateVerificationTokensTrackingParams) Do(ctx context.Context) (err error) {
+	return cdp.Execute(ctx, CommandSetPrivateVerificationTokensTracking, p, nil)
 }
 
 // SetStorageBucketTrackingParams set tracking for a storage key's buckets.
@@ -943,7 +738,7 @@ func RunBounceTrackingMitigations() *RunBounceTrackingMitigationsParams {
 
 // RunBounceTrackingMitigationsReturns return values.
 type RunBounceTrackingMitigationsReturns struct {
-	DeletedSites []string `json:"deletedSites,omitempty"`
+	DeletedSites []string `json:"deletedSites,omitempty,omitzero"`
 }
 
 // Do executes Storage.runBounceTrackingMitigations against the provided context.
@@ -962,159 +757,31 @@ func (p *RunBounceTrackingMitigationsParams) Do(ctx context.Context) (deletedSit
 	return res.DeletedSites, nil
 }
 
-// SetAttributionReportingLocalTestingModeParams
-// https://wicg.github.io/attribution-reporting-api/.
-type SetAttributionReportingLocalTestingModeParams struct {
-	Enabled bool `json:"enabled"` // If enabled, noise is suppressed and reports are sent immediately.
-}
-
-// SetAttributionReportingLocalTestingMode
-// https://wicg.github.io/attribution-reporting-api/.
-//
-// See: https://chromedevtools.github.io/devtools-protocol/tot/Storage#method-setAttributionReportingLocalTestingMode
-//
-// parameters:
-//
-//	enabled - If enabled, noise is suppressed and reports are sent immediately.
-func SetAttributionReportingLocalTestingMode(enabled bool) *SetAttributionReportingLocalTestingModeParams {
-	return &SetAttributionReportingLocalTestingModeParams{
-		Enabled: enabled,
-	}
-}
-
-// Do executes Storage.setAttributionReportingLocalTestingMode against the provided context.
-func (p *SetAttributionReportingLocalTestingModeParams) Do(ctx context.Context) (err error) {
-	return cdp.Execute(ctx, CommandSetAttributionReportingLocalTestingMode, p, nil)
-}
-
-// SetAttributionReportingTrackingParams enables/disables issuing of
-// Attribution Reporting events.
-type SetAttributionReportingTrackingParams struct {
-	Enable bool `json:"enable"`
-}
-
-// SetAttributionReportingTracking enables/disables issuing of Attribution
-// Reporting events.
-//
-// See: https://chromedevtools.github.io/devtools-protocol/tot/Storage#method-setAttributionReportingTracking
-//
-// parameters:
-//
-//	enable
-func SetAttributionReportingTracking(enable bool) *SetAttributionReportingTrackingParams {
-	return &SetAttributionReportingTrackingParams{
-		Enable: enable,
-	}
-}
-
-// Do executes Storage.setAttributionReportingTracking against the provided context.
-func (p *SetAttributionReportingTrackingParams) Do(ctx context.Context) (err error) {
-	return cdp.Execute(ctx, CommandSetAttributionReportingTracking, p, nil)
-}
-
-// SendPendingAttributionReportsParams sends all pending Attribution Reports
-// immediately, regardless of their scheduled report time.
-type SendPendingAttributionReportsParams struct{}
-
-// SendPendingAttributionReports sends all pending Attribution Reports
-// immediately, regardless of their scheduled report time.
-//
-// See: https://chromedevtools.github.io/devtools-protocol/tot/Storage#method-sendPendingAttributionReports
-func SendPendingAttributionReports() *SendPendingAttributionReportsParams {
-	return &SendPendingAttributionReportsParams{}
-}
-
-// SendPendingAttributionReportsReturns return values.
-type SendPendingAttributionReportsReturns struct {
-	NumSent int64 `json:"numSent,omitempty"` // The number of reports that were sent.
-}
-
-// Do executes Storage.sendPendingAttributionReports against the provided context.
-//
-// returns:
-//
-//	numSent - The number of reports that were sent.
-func (p *SendPendingAttributionReportsParams) Do(ctx context.Context) (numSent int64, err error) {
-	// execute
-	var res SendPendingAttributionReportsReturns
-	err = cdp.Execute(ctx, CommandSendPendingAttributionReports, nil, &res)
-	if err != nil {
-		return 0, err
-	}
-
-	return res.NumSent, nil
-}
-
-// GetRelatedWebsiteSetsParams returns the effective Related Website Sets in
-// use by this profile for the browser session. The effective Related Website
-// Sets will not change during a browser session.
-type GetRelatedWebsiteSetsParams struct{}
-
-// GetRelatedWebsiteSets returns the effective Related Website Sets in use by
-// this profile for the browser session. The effective Related Website Sets will
-// not change during a browser session.
-//
-// See: https://chromedevtools.github.io/devtools-protocol/tot/Storage#method-getRelatedWebsiteSets
-func GetRelatedWebsiteSets() *GetRelatedWebsiteSetsParams {
-	return &GetRelatedWebsiteSetsParams{}
-}
-
-// GetRelatedWebsiteSetsReturns return values.
-type GetRelatedWebsiteSetsReturns struct {
-	Sets []*RelatedWebsiteSet `json:"sets,omitempty"`
-}
-
-// Do executes Storage.getRelatedWebsiteSets against the provided context.
-//
-// returns:
-//
-//	sets
-func (p *GetRelatedWebsiteSetsParams) Do(ctx context.Context) (sets []*RelatedWebsiteSet, err error) {
-	// execute
-	var res GetRelatedWebsiteSetsReturns
-	err = cdp.Execute(ctx, CommandGetRelatedWebsiteSets, nil, &res)
-	if err != nil {
-		return nil, err
-	}
-
-	return res.Sets, nil
-}
-
 // Command names.
 const (
-	CommandGetStorageKeyForFrame                   = "Storage.getStorageKeyForFrame"
-	CommandClearDataForOrigin                      = "Storage.clearDataForOrigin"
-	CommandClearDataForStorageKey                  = "Storage.clearDataForStorageKey"
-	CommandGetCookies                              = "Storage.getCookies"
-	CommandSetCookies                              = "Storage.setCookies"
-	CommandClearCookies                            = "Storage.clearCookies"
-	CommandGetUsageAndQuota                        = "Storage.getUsageAndQuota"
-	CommandOverrideQuotaForOrigin                  = "Storage.overrideQuotaForOrigin"
-	CommandTrackCacheStorageForOrigin              = "Storage.trackCacheStorageForOrigin"
-	CommandTrackCacheStorageForStorageKey          = "Storage.trackCacheStorageForStorageKey"
-	CommandTrackIndexedDBForOrigin                 = "Storage.trackIndexedDBForOrigin"
-	CommandTrackIndexedDBForStorageKey             = "Storage.trackIndexedDBForStorageKey"
-	CommandUntrackCacheStorageForOrigin            = "Storage.untrackCacheStorageForOrigin"
-	CommandUntrackCacheStorageForStorageKey        = "Storage.untrackCacheStorageForStorageKey"
-	CommandUntrackIndexedDBForOrigin               = "Storage.untrackIndexedDBForOrigin"
-	CommandUntrackIndexedDBForStorageKey           = "Storage.untrackIndexedDBForStorageKey"
-	CommandGetTrustTokens                          = "Storage.getTrustTokens"
-	CommandClearTrustTokens                        = "Storage.clearTrustTokens"
-	CommandGetInterestGroupDetails                 = "Storage.getInterestGroupDetails"
-	CommandSetInterestGroupTracking                = "Storage.setInterestGroupTracking"
-	CommandSetInterestGroupAuctionTracking         = "Storage.setInterestGroupAuctionTracking"
-	CommandGetSharedStorageMetadata                = "Storage.getSharedStorageMetadata"
-	CommandGetSharedStorageEntries                 = "Storage.getSharedStorageEntries"
-	CommandSetSharedStorageEntry                   = "Storage.setSharedStorageEntry"
-	CommandDeleteSharedStorageEntry                = "Storage.deleteSharedStorageEntry"
-	CommandClearSharedStorageEntries               = "Storage.clearSharedStorageEntries"
-	CommandResetSharedStorageBudget                = "Storage.resetSharedStorageBudget"
-	CommandSetSharedStorageTracking                = "Storage.setSharedStorageTracking"
-	CommandSetStorageBucketTracking                = "Storage.setStorageBucketTracking"
-	CommandDeleteStorageBucket                     = "Storage.deleteStorageBucket"
-	CommandRunBounceTrackingMitigations            = "Storage.runBounceTrackingMitigations"
-	CommandSetAttributionReportingLocalTestingMode = "Storage.setAttributionReportingLocalTestingMode"
-	CommandSetAttributionReportingTracking         = "Storage.setAttributionReportingTracking"
-	CommandSendPendingAttributionReports           = "Storage.sendPendingAttributionReports"
-	CommandGetRelatedWebsiteSets                   = "Storage.getRelatedWebsiteSets"
+	CommandGetStorageKey                        = "Storage.getStorageKey"
+	CommandClearDataForOrigin                   = "Storage.clearDataForOrigin"
+	CommandClearDataForStorageKey               = "Storage.clearDataForStorageKey"
+	CommandGetCookies                           = "Storage.getCookies"
+	CommandSetCookies                           = "Storage.setCookies"
+	CommandClearCookies                         = "Storage.clearCookies"
+	CommandGetUsageAndQuota                     = "Storage.getUsageAndQuota"
+	CommandOverrideQuotaForOrigin               = "Storage.overrideQuotaForOrigin"
+	CommandTrackCacheStorageForOrigin           = "Storage.trackCacheStorageForOrigin"
+	CommandTrackCacheStorageForStorageKey       = "Storage.trackCacheStorageForStorageKey"
+	CommandTrackIndexedDBForOrigin              = "Storage.trackIndexedDBForOrigin"
+	CommandTrackIndexedDBForStorageKey          = "Storage.trackIndexedDBForStorageKey"
+	CommandUntrackCacheStorageForOrigin         = "Storage.untrackCacheStorageForOrigin"
+	CommandUntrackCacheStorageForStorageKey     = "Storage.untrackCacheStorageForStorageKey"
+	CommandUntrackIndexedDBForOrigin            = "Storage.untrackIndexedDBForOrigin"
+	CommandUntrackIndexedDBForStorageKey        = "Storage.untrackIndexedDBForStorageKey"
+	CommandGetTrustTokens                       = "Storage.getTrustTokens"
+	CommandClearTrustTokens                     = "Storage.clearTrustTokens"
+	CommandGetPrivateVerificationTokens         = "Storage.getPrivateVerificationTokens"
+	CommandClearPrivateVerificationTokens       = "Storage.clearPrivateVerificationTokens"
+	CommandDeletePrivateVerificationToken       = "Storage.deletePrivateVerificationToken"
+	CommandSetPrivateVerificationTokensTracking = "Storage.setPrivateVerificationTokensTracking"
+	CommandSetStorageBucketTracking             = "Storage.setStorageBucketTracking"
+	CommandDeleteStorageBucket                  = "Storage.deleteStorageBucket"
+	CommandRunBounceTrackingMitigations         = "Storage.runBounceTrackingMitigations"
 )

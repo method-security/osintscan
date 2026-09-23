@@ -312,9 +312,9 @@ func (s *Scope) toCIDRs(strings []string) []*net.IPNet {
 func AcquireConfig(dir, file string, cfg *Config) error {
 	var path, dircfg, syscfg string
 
-	cfg.Filepath = OutputDirectory(dir)
-	if finfo, err := os.Stat(cfg.Filepath); cfg.Filepath != "" && !os.IsNotExist(err) && finfo.IsDir() {
-		dircfg = filepath.Join(cfg.Filepath, defaultCfgFile)
+	cfg.Dir = OutputDirectory(dir)
+	if finfo, err := os.Stat(cfg.Dir); cfg.Dir != "" && !os.IsNotExist(err) && finfo.IsDir() {
+		dircfg = filepath.Join(cfg.Dir, defaultCfgFile)
 	}
 
 	if runtime.GOOS != "windows" {
