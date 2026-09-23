@@ -1057,42 +1057,19 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#subdomain" class="md-nav__link">
+  <a href="#cctld" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Subdomain
+        ccTLD
       
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="Subdomain">
+    <nav class="md-nav" aria-label="ccTLD">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
   <a href="#usage_9" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Usage
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#active" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Active
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="Active">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#usage_10" class="md-nav__link">
     <span class="md-ellipsis">
       
         Usage
@@ -1119,15 +1096,38 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#correlation" class="md-nav__link">
+  <a href="#subdomain" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Correlation
+        Subdomain
       
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="Correlation">
+    <nav class="md-nav" aria-label="Subdomain">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#usage_10" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Usage
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#active" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Active
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Active">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
@@ -2018,42 +2018,19 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#subdomain" class="md-nav__link">
+  <a href="#cctld" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Subdomain
+        ccTLD
       
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="Subdomain">
+    <nav class="md-nav" aria-label="ccTLD">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
   <a href="#usage_9" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Usage
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#active" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Active
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="Active">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#usage_10" class="md-nav__link">
     <span class="md-ellipsis">
       
         Usage
@@ -2080,15 +2057,38 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#correlation" class="md-nav__link">
+  <a href="#subdomain" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Correlation
+        Subdomain
       
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="Correlation">
+    <nav class="md-nav" aria-label="Subdomain">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#usage_10" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Usage
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#active" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Active
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Active">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
@@ -2381,10 +2381,10 @@ Usage:
 
 Flags:
 <span class="w">      </span>--domain<span class="w"> </span>string<span class="w">                </span>The<span class="w"> </span>domain<span class="w"> </span>name<span class="w"> </span>to<span class="w"> </span>check<span class="w"> </span>against<span class="w"> </span>CDN<span class="w"> </span>provider<span class="w"> </span>ranges
-<span class="w">      </span>--dns-resolvers<span class="w"> </span>stringSlice<span class="w">    </span>Custom<span class="w"> </span>DNS<span class="w"> </span>resolver/servers<span class="w"> </span>to<span class="w"> </span>use
+<span class="w">      </span>--dns-resolvers<span class="w"> </span>strings<span class="w">        </span>Custom<span class="w"> </span>DNS<span class="w"> </span>resolvers<span class="w"> </span><span class="o">(</span>e.g.<span class="w"> </span><span class="m">10</span>.0.0.1:53<span class="o">)</span>.
 <span class="w">      </span>--fingerprints-file<span class="w"> </span>string<span class="w">     </span>The<span class="w"> </span>path<span class="w"> </span>to<span class="w"> </span>the<span class="w"> </span>CDN<span class="w"> </span>fingerprints<span class="w"> </span>file
 <span class="w">  </span>-h,<span class="w"> </span>--help<span class="w">                        </span><span class="nb">help</span><span class="w"> </span><span class="k">for</span><span class="w"> </span>cdn
-<span class="w">      </span>--ip-addresses<span class="w"> </span>stringSlice<span class="w">    </span>IP<span class="w"> </span>addresses<span class="w"> </span>to<span class="w"> </span>check<span class="w"> </span>against<span class="w"> </span>CDN<span class="w"> </span>provider<span class="w"> </span>ranges
+<span class="w">      </span>--ip-addresses<span class="w"> </span>strings<span class="w">        </span>IP<span class="w"> </span>addresses<span class="w"> </span>or<span class="w"> </span>CIDRs<span class="w"> </span>to<span class="w"> </span>check<span class="w"> </span><span class="o">(</span>e.g.<span class="w"> </span><span class="m">1</span>.2.3.4<span class="w"> </span>or<span class="w"> </span><span class="m">1</span>.2.3.0/24<span class="o">)</span>
 
 Global<span class="w"> </span>Flags:
 <span class="w">  </span>-o,<span class="w"> </span>--output<span class="w"> </span>string<span class="w">        </span>Output<span class="w"> </span>format<span class="w"> </span><span class="o">(</span>signal,<span class="w"> </span>json,<span class="w"> </span>yaml<span class="o">)</span>.<span class="w"> </span>Default<span class="w"> </span>value<span class="w"> </span>is<span class="w"> </span>signal<span class="w"> </span><span class="o">(</span>default<span class="w"> </span><span class="s2">"signal"</span><span class="o">)</span>
@@ -2460,10 +2460,11 @@ Global<span class="w"> </span>Flags:
 <h4 id="available-subcommands">Available Subcommands<a class="headerlink" href="#available-subcommands" title="Permanent link">#</a></h4>
 <ul>
 <li><strong>certs</strong>: Retrieve SSL/TLS certificates for domains</li>
+<li><strong>cctld</strong>: Discover alternate country-code apex domains</li>
 <li><strong>records</strong>: Fetch DNS records (A, AAAA, MX, TXT, etc.)</li>
 <li><strong>forward</strong>: Perform forward DNS lookups</li>
 <li><strong>reverse</strong>: Perform reverse DNS lookups on IPs/CIDRs</li>
-<li><strong>subdomain</strong>: Subdomain discovery (active, correlation, passive)</li>
+<li><strong>subdomain</strong>: Subdomain discovery (active and passive)</li>
 </ul>
 <h4 id="certs">Certs<a class="headerlink" href="#certs" title="Permanent link">#</a></h4>
 <p>Fetch and display SSL/TLS certificates associated with the specified domain.</p>
@@ -2521,7 +2522,7 @@ Usage:
 <span class="w">  </span>osintscan<span class="w"> </span>discover<span class="w"> </span>dns<span class="w"> </span>forward<span class="w"> </span><span class="o">[</span>flags<span class="o">]</span>
 
 Flags:
-<span class="w">      </span>--dns-resolvers<span class="w"> </span>stringSlice<span class="w">   </span>Custom<span class="w"> </span>DNS<span class="w"> </span>resolver/servers
+<span class="w">      </span>--dns-resolvers<span class="w"> </span>strings<span class="w">   </span>Custom<span class="w"> </span>DNS<span class="w"> </span>resolvers<span class="w"> </span><span class="o">(</span>e.g.<span class="w"> </span><span class="m">10</span>.0.0.1<span class="o">)</span>.
 <span class="w">      </span>--domain<span class="w"> </span>string<span class="w">              </span>Domain<span class="w"> </span>name<span class="w"> </span>to<span class="w"> </span>perform<span class="w"> </span>forward<span class="w"> </span>lookups<span class="w"> </span>on
 <span class="w">  </span>-h,<span class="w"> </span>--help<span class="w">                      </span><span class="nb">help</span><span class="w"> </span><span class="k">for</span><span class="w"> </span>forward
 
@@ -2556,17 +2557,36 @@ Global<span class="w"> </span>Flags:
 <span class="w">  </span>-q,<span class="w"> </span>--quiet<span class="w">                </span>Suppress<span class="w"> </span>output
 <span class="w">  </span>-v,<span class="w"> </span>--verbose<span class="w">              </span>Verbose<span class="w"> </span>output
 </code></pre></div>
+<h4 id="cctld">ccTLD<a class="headerlink" href="#cctld" title="Permanent link">#</a></h4>
+<p>Generate country-code TLD variants of a domain and resolve their A, AAAA, NS, and MX records.</p>
+<h5 id="usage_9">Usage<a class="headerlink" href="#usage_9" title="Permanent link">#</a></h5>
+<div class="highlight"><pre><span></span><code>osintscan<span class="w"> </span>discover<span class="w"> </span>dns<span class="w"> </span>cctld<span class="w"> </span>--domain<span class="w"> </span>example.com<span class="w"> </span>--cctlds-preset<span class="w"> </span>TOP50
+osintscan<span class="w"> </span>discover<span class="w"> </span>dns<span class="w"> </span>cctld<span class="w"> </span>--domain<span class="w"> </span>example.com<span class="w"> </span>--cctlds<span class="w"> </span>ru,cn,de
+</code></pre></div>
+<h5 id="help-text_7">Help Text<a class="headerlink" href="#help-text_7" title="Permanent link">#</a></h5>
+<div class="highlight"><pre><span></span><code>Usage:
+<span class="w">  </span>osintscan<span class="w"> </span>discover<span class="w"> </span>dns<span class="w"> </span>cctld<span class="w"> </span><span class="o">[</span>flags<span class="o">]</span>
+
+Flags:
+<span class="w">      </span>--cctlds<span class="w"> </span>strings<span class="w">          </span>Explicit<span class="w"> </span>list<span class="w"> </span>of<span class="w"> </span>ccTLD<span class="w"> </span>labels<span class="w"> </span>to<span class="w"> </span><span class="nb">test</span><span class="w"> </span><span class="o">(</span>e.g.<span class="w"> </span>ru,cn,de<span class="o">)</span>
+<span class="w">      </span>--cctlds-preset<span class="w"> </span>string<span class="w">    </span>Named<span class="w"> </span>preset<span class="w"> </span>of<span class="w"> </span>ccTLDs:<span class="w"> </span>APT_RELEVANT,<span class="w"> </span>TOP50,<span class="w"> </span>EU27,<span class="w"> </span>ASEAN,<span class="w"> </span>ALL
+<span class="w">      </span>--dns-resolvers<span class="w"> </span>strings<span class="w">   </span>Custom<span class="w"> </span>DNS<span class="w"> </span>resolvers<span class="w"> </span><span class="o">(</span>e.g.<span class="w"> </span><span class="m">1</span>.1.1.1,8.8.8.8<span class="o">)</span>
+<span class="w">      </span>--domain<span class="w"> </span>string<span class="w">           </span>The<span class="w"> </span>domain<span class="w"> </span>name<span class="w"> </span>to<span class="w"> </span>pivot<span class="w"> </span>ccTLDs<span class="w"> </span>from<span class="w"> </span><span class="o">(</span>e.g.<span class="w"> </span>acme.com<span class="o">)</span>
+<span class="w">  </span>-h,<span class="w"> </span>--help<span class="w">                    </span><span class="nb">help</span><span class="w"> </span><span class="k">for</span><span class="w"> </span>cctld
+<span class="w">      </span>--threads<span class="w"> </span>int<span class="w">             </span>Number<span class="w"> </span>of<span class="w"> </span>concurrent<span class="w"> </span>DNS<span class="w"> </span>probe<span class="w"> </span>goroutines<span class="w"> </span><span class="o">(</span>default<span class="w"> </span><span class="m">50</span><span class="o">)</span>
+<span class="w">      </span>--timeout<span class="w"> </span>int<span class="w">             </span>Per-request<span class="w"> </span>timeout<span class="w"> </span><span class="k">in</span><span class="w"> </span>milliseconds<span class="w"> </span><span class="k">for</span><span class="w"> </span>DNS<span class="w"> </span>probes<span class="w"> </span><span class="o">(</span>default<span class="w"> </span><span class="m">5000</span><span class="o">)</span>
+</code></pre></div>
 <h4 id="subdomain">Subdomain<a class="headerlink" href="#subdomain" title="Permanent link">#</a></h4>
 <p>Discover subdomains using various techniques.</p>
-<h5 id="usage_9">Usage<a class="headerlink" href="#usage_9" title="Permanent link">#</a></h5>
+<h5 id="usage_10">Usage<a class="headerlink" href="#usage_10" title="Permanent link">#</a></h5>
 <div class="highlight"><pre><span></span><code>osintscan<span class="w"> </span>discover<span class="w"> </span>dns<span class="w"> </span>subdomain<span class="w"> </span><span class="o">[</span>command<span class="o">]</span>
 </code></pre></div>
 <h5 id="active">Active<a class="headerlink" href="#active" title="Permanent link">#</a></h5>
 <p>Actively discover subdomains using brute-force techniques with wordlists.</p>
-<h6 id="usage_10">Usage<a class="headerlink" href="#usage_10" title="Permanent link">#</a></h6>
+<h6 id="usage_11">Usage<a class="headerlink" href="#usage_11" title="Permanent link">#</a></h6>
 <div class="highlight"><pre><span></span><code>osintscan<span class="w"> </span>discover<span class="w"> </span>dns<span class="w"> </span>subdomain<span class="w"> </span>active<span class="w"> </span>--domain<span class="w"> </span>example.com<span class="w"> </span>--wordlist-size<span class="w"> </span>small
 </code></pre></div>
-<h6 id="help-text_7">Help Text<a class="headerlink" href="#help-text_7" title="Permanent link">#</a></h6>
+<h6 id="help-text_8">Help Text<a class="headerlink" href="#help-text_8" title="Permanent link">#</a></h6>
 <div class="highlight"><pre><span></span><code>Actively<span class="w"> </span>discover<span class="w"> </span>subdomains<span class="w"> </span><span class="k">for</span><span class="w"> </span>the<span class="w"> </span>specified<span class="w"> </span>domain<span class="w"> </span>by<span class="w"> </span>bruteforcing<span class="w"> </span>common<span class="w"> </span>subdomain<span class="w"> </span>names<span class="w"> </span>and<span class="w"> </span>patterns.
 
 Usage:
@@ -2584,30 +2604,6 @@ Flags:
 <span class="w">      </span>--wildcard-checks<span class="w"> </span>int<span class="w">     </span>Number<span class="w"> </span>of<span class="w"> </span>random<span class="w"> </span>subdomain<span class="w"> </span>probes<span class="w"> </span>used<span class="w"> </span>to<span class="w"> </span>detect<span class="w"> </span>wildcard<span class="w"> </span>DNS<span class="w"> </span>records<span class="w"> </span><span class="o">(</span>default<span class="w"> </span><span class="m">5</span><span class="o">)</span>
 <span class="w">      </span>--wordlist-file<span class="w"> </span>string<span class="w">    </span>The<span class="w"> </span>file<span class="w"> </span>containing<span class="w"> </span>the<span class="w"> </span>wordlist<span class="w"> </span>to<span class="w"> </span>use<span class="w"> </span><span class="k">for</span><span class="w"> </span>discovery
 <span class="w">      </span>--wordlist-size<span class="w"> </span>string<span class="w">    </span>The<span class="w"> </span>size<span class="w"> </span>of<span class="w"> </span>the<span class="w"> </span>in-built<span class="w"> </span>wordlist<span class="w"> </span>to<span class="w"> </span>use<span class="w"> </span><span class="k">for</span><span class="w"> </span>discovery<span class="w"> </span><span class="o">(</span>default<span class="w"> </span><span class="s2">"SMALL"</span><span class="o">)</span>
-
-Global<span class="w"> </span>Flags:
-<span class="w">  </span>-o,<span class="w"> </span>--output<span class="w"> </span>string<span class="w">        </span>Output<span class="w"> </span>format<span class="w"> </span><span class="o">(</span>signal,<span class="w"> </span>json,<span class="w"> </span>yaml<span class="o">)</span>.<span class="w"> </span>Default<span class="w"> </span>value<span class="w"> </span>is<span class="w"> </span>signal<span class="w"> </span><span class="o">(</span>default<span class="w"> </span><span class="s2">"signal"</span><span class="o">)</span>
-<span class="w">  </span>-f,<span class="w"> </span>--output-file<span class="w"> </span>string<span class="w">   </span>Path<span class="w"> </span>to<span class="w"> </span>output<span class="w"> </span>file.<span class="w"> </span>If<span class="w"> </span>blank,<span class="w"> </span>will<span class="w"> </span>output<span class="w"> </span>to<span class="w"> </span>STDOUT
-<span class="w">  </span>-q,<span class="w"> </span>--quiet<span class="w">                </span>Suppress<span class="w"> </span>output
-<span class="w">  </span>-v,<span class="w"> </span>--verbose<span class="w">              </span>Verbose<span class="w"> </span>output
-</code></pre></div>
-<h5 id="correlation">Correlation<a class="headerlink" href="#correlation" title="Permanent link">#</a></h5>
-<p>Correlate subdomains across multiple domains using active data sources.</p>
-<h6 id="usage_11">Usage<a class="headerlink" href="#usage_11" title="Permanent link">#</a></h6>
-<div class="highlight"><pre><span></span><code>osintscan<span class="w"> </span>discover<span class="w"> </span>dns<span class="w"> </span>subdomain<span class="w"> </span>correlation<span class="w"> </span>--domains<span class="w"> </span>example.com,test.com
-</code></pre></div>
-<h6 id="help-text_8">Help Text<a class="headerlink" href="#help-text_8" title="Permanent link">#</a></h6>
-<div class="highlight"><pre><span></span><code>Correlate<span class="w"> </span>subdomains<span class="w"> </span>across<span class="w"> </span>multiple<span class="w"> </span>domains<span class="w"> </span>using<span class="w"> </span>active<span class="w"> </span>data<span class="w"> </span>sources<span class="w"> </span><span class="o">(</span>no<span class="w"> </span>direct<span class="w"> </span>interaction<span class="w"> </span>with<span class="w"> </span>the<span class="w"> </span>target<span class="o">)</span>.
-
-Usage:
-<span class="w">  </span>osintscan<span class="w"> </span>discover<span class="w"> </span>dns<span class="w"> </span>subdomain<span class="w"> </span>correlation<span class="w"> </span><span class="o">[</span>flags<span class="o">]</span>
-
-Flags:
-<span class="w">      </span>--dns-resolvers<span class="w"> </span>strings<span class="w">   </span>Custom<span class="w"> </span>DNS<span class="w"> </span>resolver/servers<span class="w"> </span>to<span class="w"> </span>use<span class="w"> </span><span class="k">for</span><span class="w"> </span>queries<span class="w"> </span><span class="o">(</span>e.g.<span class="w"> </span><span class="m">1</span>.1.1.1:53<span class="o">)</span>
-<span class="w">      </span>--domains<span class="w"> </span>strings<span class="w">         </span>The<span class="w"> </span>domains<span class="w"> </span>to<span class="w"> </span><span class="nb">test</span>
-<span class="w">  </span>-h,<span class="w"> </span>--help<span class="w">                    </span><span class="nb">help</span><span class="w"> </span><span class="k">for</span><span class="w"> </span>correlation
-<span class="w">      </span>--threads<span class="w"> </span>int<span class="w">             </span>Number<span class="w"> </span>of<span class="w"> </span>parallel<span class="w"> </span>threads<span class="w"> </span>to<span class="w"> </span>use<span class="w"> </span><span class="k">for</span><span class="w"> </span>testing<span class="w"> </span><span class="o">(</span>default<span class="w"> </span><span class="m">10</span><span class="o">)</span>
-<span class="w">      </span>--timeout<span class="w"> </span>int<span class="w">             </span>Maximum<span class="w"> </span><span class="nb">time</span><span class="w"> </span><span class="o">(</span><span class="k">in</span><span class="w"> </span>seconds<span class="o">)</span><span class="w"> </span>to<span class="w"> </span>spend<span class="w"> </span>on<span class="w"> </span>each<span class="w"> </span>lookup
 
 Global<span class="w"> </span>Flags:
 <span class="w">  </span>-o,<span class="w"> </span>--output<span class="w"> </span>string<span class="w">        </span>Output<span class="w"> </span>format<span class="w"> </span><span class="o">(</span>signal,<span class="w"> </span>json,<span class="w"> </span>yaml<span class="o">)</span>.<span class="w"> </span>Default<span class="w"> </span>value<span class="w"> </span>is<span class="w"> </span>signal<span class="w"> </span><span class="o">(</span>default<span class="w"> </span><span class="s2">"signal"</span><span class="o">)</span>
