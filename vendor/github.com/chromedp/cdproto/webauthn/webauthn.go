@@ -18,7 +18,7 @@ import (
 // EnableParams enable the WebAuthn domain and start intercepting credential
 // storage and retrieval with a virtual authenticator.
 type EnableParams struct {
-	EnableUI bool `json:"enableUI,omitempty"` // Whether to enable the WebAuthn user interface. Enabling the UI is recommended for debugging and demo purposes, as it is closer to the real experience. Disabling the UI is recommended for automated testing. Supported at the embedder's discretion if UI is available. Defaults to false.
+	EnableUI bool `json:"enableUI"` // Whether to enable the WebAuthn user interface. Enabling the UI is recommended for debugging and demo purposes, as it is closer to the real experience. Disabling the UI is recommended for automated testing. Supported at the embedder's discretion if UI is available. Defaults to false.
 }
 
 // Enable enable the WebAuthn domain and start intercepting credential
@@ -28,7 +28,9 @@ type EnableParams struct {
 //
 // parameters:
 func Enable() *EnableParams {
-	return &EnableParams{}
+	return &EnableParams{
+		EnableUI: false,
+	}
 }
 
 // WithEnableUI whether to enable the WebAuthn user interface. Enabling the
@@ -80,7 +82,7 @@ func AddVirtualAuthenticator(options *VirtualAuthenticatorOptions) *AddVirtualAu
 
 // AddVirtualAuthenticatorReturns return values.
 type AddVirtualAuthenticatorReturns struct {
-	AuthenticatorID AuthenticatorID `json:"authenticatorId,omitempty"`
+	AuthenticatorID AuthenticatorID `json:"authenticatorId,omitempty,omitzero"`
 }
 
 // Do executes WebAuthn.addVirtualAuthenticator against the provided context.
@@ -103,9 +105,9 @@ func (p *AddVirtualAuthenticatorParams) Do(ctx context.Context) (authenticatorID
 // isBadUP to false if they are not present.
 type SetResponseOverrideBitsParams struct {
 	AuthenticatorID  AuthenticatorID `json:"authenticatorId"`
-	IsBogusSignature bool            `json:"isBogusSignature,omitempty"` // If isBogusSignature is set, overrides the signature in the authenticator response to be zero. Defaults to false.
-	IsBadUV          bool            `json:"isBadUV,omitempty"`          // If isBadUV is set, overrides the UV bit in the flags in the authenticator response to be zero. Defaults to false.
-	IsBadUP          bool            `json:"isBadUP,omitempty"`          // If isBadUP is set, overrides the UP bit in the flags in the authenticator response to be zero. Defaults to false.
+	IsBogusSignature bool            `json:"isBogusSignature"` // If isBogusSignature is set, overrides the signature in the authenticator response to be zero. Defaults to false.
+	IsBadUV          bool            `json:"isBadUV"`          // If isBadUV is set, overrides the UV bit in the flags in the authenticator response to be zero. Defaults to false.
+	IsBadUP          bool            `json:"isBadUP"`          // If isBadUP is set, overrides the UP bit in the flags in the authenticator response to be zero. Defaults to false.
 }
 
 // SetResponseOverrideBits resets parameters isBogusSignature, isBadUV,
@@ -118,7 +120,10 @@ type SetResponseOverrideBitsParams struct {
 //	authenticatorID
 func SetResponseOverrideBits(authenticatorID AuthenticatorID) *SetResponseOverrideBitsParams {
 	return &SetResponseOverrideBitsParams{
-		AuthenticatorID: authenticatorID,
+		AuthenticatorID:  authenticatorID,
+		IsBogusSignature: false,
+		IsBadUV:          false,
+		IsBadUP:          false,
 	}
 }
 
@@ -222,7 +227,7 @@ func GetCredential(authenticatorID AuthenticatorID, credentialID string) *GetCre
 
 // GetCredentialReturns return values.
 type GetCredentialReturns struct {
-	Credential *Credential `json:"credential,omitempty"`
+	Credential *Credential `json:"credential,omitempty,omitzero"`
 }
 
 // Do executes WebAuthn.getCredential against the provided context.
@@ -263,7 +268,7 @@ func GetCredentials(authenticatorID AuthenticatorID) *GetCredentialsParams {
 
 // GetCredentialsReturns return values.
 type GetCredentialsReturns struct {
-	Credentials []*Credential `json:"credentials,omitempty"`
+	Credentials []*Credential `json:"credentials,omitempty,omitzero"`
 }
 
 // Do executes WebAuthn.getCredentials against the provided context.
@@ -393,10 +398,13 @@ func (p *SetAutomaticPresenceSimulationParams) Do(ctx context.Context) (err erro
 // SetCredentialPropertiesParams allows setting credential properties.
 // https://w3c.github.io/webauthn/#sctn-automation-set-credential-properties.
 type SetCredentialPropertiesParams struct {
-	AuthenticatorID   AuthenticatorID `json:"authenticatorId"`
-	CredentialID      string          `json:"credentialId"`
-	BackupEligibility bool            `json:"backupEligibility,omitempty"`
-	BackupState       bool            `json:"backupState,omitempty"`
+	AuthenticatorID                AuthenticatorID `json:"authenticatorId"`
+	CredentialID                   string          `json:"credentialId"`
+	BackupEligibility              bool            `json:"backupEligibility"`
+	BackupState                    bool            `json:"backupState"`
+	ActiveCmtgKeyIndex             int64           `json:"activeCmtgKeyIndex,omitempty,omitzero"`
+	GenerateCmtgKeyOnNextOperation bool            `json:"generateCmtgKeyOnNextOperation"`
+	SignCount                      float64         `json:"signCount,omitempty,omitzero"` // Must be equal to or greater than -1. If -1, the signature counter is removed from the credential, and every assertion operation will report a value of 0. See https://w3c.github.io/webauthn/#signature-counter
 }
 
 // SetCredentialProperties allows setting credential properties.
@@ -410,8 +418,11 @@ type SetCredentialPropertiesParams struct {
 //	credentialID
 func SetCredentialProperties(authenticatorID AuthenticatorID, credentialID string) *SetCredentialPropertiesParams {
 	return &SetCredentialPropertiesParams{
-		AuthenticatorID: authenticatorID,
-		CredentialID:    credentialID,
+		AuthenticatorID:                authenticatorID,
+		CredentialID:                   credentialID,
+		BackupEligibility:              false,
+		BackupState:                    false,
+		GenerateCmtgKeyOnNextOperation: false,
 	}
 }
 
@@ -424,6 +435,26 @@ func (p SetCredentialPropertiesParams) WithBackupEligibility(backupEligibility b
 // WithBackupState [no description].
 func (p SetCredentialPropertiesParams) WithBackupState(backupState bool) *SetCredentialPropertiesParams {
 	p.BackupState = backupState
+	return &p
+}
+
+// WithActiveCmtgKeyIndex [no description].
+func (p SetCredentialPropertiesParams) WithActiveCmtgKeyIndex(activeCmtgKeyIndex int64) *SetCredentialPropertiesParams {
+	p.ActiveCmtgKeyIndex = activeCmtgKeyIndex
+	return &p
+}
+
+// WithGenerateCmtgKeyOnNextOperation [no description].
+func (p SetCredentialPropertiesParams) WithGenerateCmtgKeyOnNextOperation(generateCmtgKeyOnNextOperation bool) *SetCredentialPropertiesParams {
+	p.GenerateCmtgKeyOnNextOperation = generateCmtgKeyOnNextOperation
+	return &p
+}
+
+// WithSignCount must be equal to or greater than -1. If -1, the signature
+// counter is removed from the credential, and every assertion operation will
+// report a value of 0. See https://w3c.github.io/webauthn/#signature-counter.
+func (p SetCredentialPropertiesParams) WithSignCount(signCount float64) *SetCredentialPropertiesParams {
+	p.SignCount = signCount
 	return &p
 }
 

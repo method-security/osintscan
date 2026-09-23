@@ -13,15 +13,12 @@ import (
 	"time"
 
 	"github.com/chromedp/sysutil"
-	"github.com/mailru/easyjson"
-	"github.com/mailru/easyjson/jlexer"
-	"github.com/mailru/easyjson/jwriter"
 )
 
 // Executor is the common interface for executing a command.
 type Executor interface {
 	// Execute executes the command.
-	Execute(context.Context, string, easyjson.Marshaler, easyjson.Unmarshaler) error
+	Execute(context.Context, string, any, any) error
 }
 
 // contextKey is the context key type.
@@ -44,7 +41,7 @@ func ExecutorFromContext(ctx context.Context) Executor {
 
 // Execute uses the context's message executor to send a command or event
 // method marshaling the provided parameters, and unmarshaling to res.
-func Execute(ctx context.Context, method string, params easyjson.Marshaler, res easyjson.Unmarshaler) error {
+func Execute(ctx context.Context, method string, params, res any) error {
 	if executor := ctx.Value(executorKey); executor != nil {
 		return executor.(Executor).Execute(ctx, method, params, res)
 	}
@@ -96,24 +93,19 @@ func (t NodeID) Int64() int64 {
 	return int64(t)
 }
 
-// UnmarshalEasyJSON satisfies easyjson.Unmarshaler.
-func (t *NodeID) UnmarshalEasyJSON(in *jlexer.Lexer) {
-	buf := in.Raw()
+// UnmarshalJSON satisfies [json.Unmarshaler].
+func (t *NodeID) UnmarshalJSON(buf []byte) error {
 	if l := len(buf); l > 2 && buf[0] == '"' && buf[l-1] == '"' {
 		buf = buf[1 : l-1]
 	}
 
 	v, err := strconv.ParseInt(string(buf), 10, 64)
 	if err != nil {
-		in.AddError(err)
+		return err
 	}
 
 	*t = NodeID(v)
-}
-
-// UnmarshalJSON satisfies json.Unmarshaler.
-func (t *NodeID) UnmarshalJSON(buf []byte) error {
-	return easyjson.Unmarshal(buf, t)
+	return nil
 }
 
 // BackendNodeID unique DOM node identifier used to reference a node that may
@@ -127,24 +119,29 @@ func (t BackendNodeID) Int64() int64 {
 	return int64(t)
 }
 
-// UnmarshalEasyJSON satisfies easyjson.Unmarshaler.
-func (t *BackendNodeID) UnmarshalEasyJSON(in *jlexer.Lexer) {
-	buf := in.Raw()
+// UnmarshalJSON satisfies [json.Unmarshaler].
+func (t *BackendNodeID) UnmarshalJSON(buf []byte) error {
 	if l := len(buf); l > 2 && buf[0] == '"' && buf[l-1] == '"' {
 		buf = buf[1 : l-1]
 	}
 
 	v, err := strconv.ParseInt(string(buf), 10, 64)
 	if err != nil {
-		in.AddError(err)
+		return err
 	}
 
 	*t = BackendNodeID(v)
+	return nil
 }
 
-// UnmarshalJSON satisfies json.Unmarshaler.
-func (t *BackendNodeID) UnmarshalJSON(buf []byte) error {
-	return easyjson.Unmarshal(buf, t)
+// StyleSheetID unique identifier for a CSS stylesheet.
+//
+// See: https://chromedevtools.github.io/devtools-protocol/tot/DOM#type-StyleSheetId
+type StyleSheetID string
+
+// String returns the StyleSheetID as string value.
+func (t StyleSheetID) String() string {
+	return string(t)
 }
 
 // BackendNode backend node with a friendly name.
@@ -168,67 +165,74 @@ func (t PseudoType) String() string {
 
 // PseudoType values.
 const (
-	PseudoTypeFirstLine                PseudoType = "first-line"
-	PseudoTypeFirstLetter              PseudoType = "first-letter"
-	PseudoTypeBefore                   PseudoType = "before"
-	PseudoTypeAfter                    PseudoType = "after"
-	PseudoTypeMarker                   PseudoType = "marker"
-	PseudoTypeBackdrop                 PseudoType = "backdrop"
-	PseudoTypeColumn                   PseudoType = "column"
-	PseudoTypeSelection                PseudoType = "selection"
-	PseudoTypeSearchText               PseudoType = "search-text"
-	PseudoTypeTargetText               PseudoType = "target-text"
-	PseudoTypeSpellingError            PseudoType = "spelling-error"
-	PseudoTypeGrammarError             PseudoType = "grammar-error"
-	PseudoTypeHighlight                PseudoType = "highlight"
-	PseudoTypeFirstLineInherited       PseudoType = "first-line-inherited"
-	PseudoTypeScrollMarker             PseudoType = "scroll-marker"
-	PseudoTypeScrollMarkerGroup        PseudoType = "scroll-marker-group"
-	PseudoTypeScrollNextButton         PseudoType = "scroll-next-button"
-	PseudoTypeScrollPrevButton         PseudoType = "scroll-prev-button"
-	PseudoTypeScrollbar                PseudoType = "scrollbar"
-	PseudoTypeScrollbarThumb           PseudoType = "scrollbar-thumb"
-	PseudoTypeScrollbarButton          PseudoType = "scrollbar-button"
-	PseudoTypeScrollbarTrack           PseudoType = "scrollbar-track"
-	PseudoTypeScrollbarTrackPiece      PseudoType = "scrollbar-track-piece"
-	PseudoTypeScrollbarCorner          PseudoType = "scrollbar-corner"
-	PseudoTypeResizer                  PseudoType = "resizer"
-	PseudoTypeInputListButton          PseudoType = "input-list-button"
-	PseudoTypeViewTransition           PseudoType = "view-transition"
-	PseudoTypeViewTransitionGroup      PseudoType = "view-transition-group"
-	PseudoTypeViewTransitionImagePair  PseudoType = "view-transition-image-pair"
-	PseudoTypeViewTransitionOld        PseudoType = "view-transition-old"
-	PseudoTypeViewTransitionNew        PseudoType = "view-transition-new"
-	PseudoTypePlaceholder              PseudoType = "placeholder"
-	PseudoTypeFileSelectorButton       PseudoType = "file-selector-button"
-	PseudoTypeDetailsContent           PseudoType = "details-content"
-	PseudoTypeSelectFallbackButton     PseudoType = "select-fallback-button"
-	PseudoTypeSelectFallbackButtonText PseudoType = "select-fallback-button-text"
-	PseudoTypePicker                   PseudoType = "picker"
+	PseudoTypeFirstLine                   PseudoType = "first-line"
+	PseudoTypeFirstLetter                 PseudoType = "first-letter"
+	PseudoTypeCheckmark                   PseudoType = "checkmark"
+	PseudoTypeBefore                      PseudoType = "before"
+	PseudoTypeAfter                       PseudoType = "after"
+	PseudoTypeExpandIcon                  PseudoType = "expand-icon"
+	PseudoTypePickerIcon                  PseudoType = "picker-icon"
+	PseudoTypeInterestButton              PseudoType = "interest-button"
+	PseudoTypeMarker                      PseudoType = "marker"
+	PseudoTypeBackdrop                    PseudoType = "backdrop"
+	PseudoTypeColumn                      PseudoType = "column"
+	PseudoTypeSelection                   PseudoType = "selection"
+	PseudoTypeSearchText                  PseudoType = "search-text"
+	PseudoTypeTargetText                  PseudoType = "target-text"
+	PseudoTypeSpellingError               PseudoType = "spelling-error"
+	PseudoTypeGrammarError                PseudoType = "grammar-error"
+	PseudoTypeHighlight                   PseudoType = "highlight"
+	PseudoTypeFirstLineInherited          PseudoType = "first-line-inherited"
+	PseudoTypeScrollMarker                PseudoType = "scroll-marker"
+	PseudoTypeScrollMarkerGroup           PseudoType = "scroll-marker-group"
+	PseudoTypeScrollButton                PseudoType = "scroll-button"
+	PseudoTypeScrollbar                   PseudoType = "scrollbar"
+	PseudoTypeScrollbarThumb              PseudoType = "scrollbar-thumb"
+	PseudoTypeScrollbarButton             PseudoType = "scrollbar-button"
+	PseudoTypeScrollbarTrack              PseudoType = "scrollbar-track"
+	PseudoTypeScrollbarTrackPiece         PseudoType = "scrollbar-track-piece"
+	PseudoTypeScrollbarCorner             PseudoType = "scrollbar-corner"
+	PseudoTypeResizer                     PseudoType = "resizer"
+	PseudoTypeInputListButton             PseudoType = "input-list-button"
+	PseudoTypeViewTransition              PseudoType = "view-transition"
+	PseudoTypeViewTransitionGroup         PseudoType = "view-transition-group"
+	PseudoTypeViewTransitionImagePair     PseudoType = "view-transition-image-pair"
+	PseudoTypeViewTransitionGroupChildren PseudoType = "view-transition-group-children"
+	PseudoTypeViewTransitionOld           PseudoType = "view-transition-old"
+	PseudoTypeViewTransitionNew           PseudoType = "view-transition-new"
+	PseudoTypePlaceholder                 PseudoType = "placeholder"
+	PseudoTypeFileSelectorButton          PseudoType = "file-selector-button"
+	PseudoTypeDetailsContent              PseudoType = "details-content"
+	PseudoTypePicker                      PseudoType = "picker"
+	PseudoTypeSelectListbox               PseudoType = "select-listbox"
+	PseudoTypePermissionIcon              PseudoType = "permission-icon"
+	PseudoTypeOverscrollAreaParent        PseudoType = "overscroll-area-parent"
+	PseudoTypeOverscrollBackdrop          PseudoType = "overscroll-backdrop"
+	PseudoTypeSkeleton                    PseudoType = "skeleton"
 )
 
-// MarshalEasyJSON satisfies easyjson.Marshaler.
-func (t PseudoType) MarshalEasyJSON(out *jwriter.Writer) {
-	out.String(string(t))
-}
+// UnmarshalJSON satisfies [json.Unmarshaler].
+func (t *PseudoType) UnmarshalJSON(buf []byte) error {
+	s := string(buf)
+	s = strings.TrimSuffix(strings.TrimPrefix(s, `"`), `"`)
 
-// MarshalJSON satisfies json.Marshaler.
-func (t PseudoType) MarshalJSON() ([]byte, error) {
-	return easyjson.Marshal(t)
-}
-
-// UnmarshalEasyJSON satisfies easyjson.Unmarshaler.
-func (t *PseudoType) UnmarshalEasyJSON(in *jlexer.Lexer) {
-	v := in.String()
-	switch PseudoType(v) {
+	switch PseudoType(s) {
 	case PseudoTypeFirstLine:
 		*t = PseudoTypeFirstLine
 	case PseudoTypeFirstLetter:
 		*t = PseudoTypeFirstLetter
+	case PseudoTypeCheckmark:
+		*t = PseudoTypeCheckmark
 	case PseudoTypeBefore:
 		*t = PseudoTypeBefore
 	case PseudoTypeAfter:
 		*t = PseudoTypeAfter
+	case PseudoTypeExpandIcon:
+		*t = PseudoTypeExpandIcon
+	case PseudoTypePickerIcon:
+		*t = PseudoTypePickerIcon
+	case PseudoTypeInterestButton:
+		*t = PseudoTypeInterestButton
 	case PseudoTypeMarker:
 		*t = PseudoTypeMarker
 	case PseudoTypeBackdrop:
@@ -253,10 +257,8 @@ func (t *PseudoType) UnmarshalEasyJSON(in *jlexer.Lexer) {
 		*t = PseudoTypeScrollMarker
 	case PseudoTypeScrollMarkerGroup:
 		*t = PseudoTypeScrollMarkerGroup
-	case PseudoTypeScrollNextButton:
-		*t = PseudoTypeScrollNextButton
-	case PseudoTypeScrollPrevButton:
-		*t = PseudoTypeScrollPrevButton
+	case PseudoTypeScrollButton:
+		*t = PseudoTypeScrollButton
 	case PseudoTypeScrollbar:
 		*t = PseudoTypeScrollbar
 	case PseudoTypeScrollbarThumb:
@@ -279,6 +281,8 @@ func (t *PseudoType) UnmarshalEasyJSON(in *jlexer.Lexer) {
 		*t = PseudoTypeViewTransitionGroup
 	case PseudoTypeViewTransitionImagePair:
 		*t = PseudoTypeViewTransitionImagePair
+	case PseudoTypeViewTransitionGroupChildren:
+		*t = PseudoTypeViewTransitionGroupChildren
 	case PseudoTypeViewTransitionOld:
 		*t = PseudoTypeViewTransitionOld
 	case PseudoTypeViewTransitionNew:
@@ -289,21 +293,22 @@ func (t *PseudoType) UnmarshalEasyJSON(in *jlexer.Lexer) {
 		*t = PseudoTypeFileSelectorButton
 	case PseudoTypeDetailsContent:
 		*t = PseudoTypeDetailsContent
-	case PseudoTypeSelectFallbackButton:
-		*t = PseudoTypeSelectFallbackButton
-	case PseudoTypeSelectFallbackButtonText:
-		*t = PseudoTypeSelectFallbackButtonText
 	case PseudoTypePicker:
 		*t = PseudoTypePicker
-
+	case PseudoTypeSelectListbox:
+		*t = PseudoTypeSelectListbox
+	case PseudoTypePermissionIcon:
+		*t = PseudoTypePermissionIcon
+	case PseudoTypeOverscrollAreaParent:
+		*t = PseudoTypeOverscrollAreaParent
+	case PseudoTypeOverscrollBackdrop:
+		*t = PseudoTypeOverscrollBackdrop
+	case PseudoTypeSkeleton:
+		*t = PseudoTypeSkeleton
 	default:
-		in.AddError(fmt.Errorf("unknown PseudoType value: %v", v))
+		return fmt.Errorf("unknown PseudoType value: %v", s)
 	}
-}
-
-// UnmarshalJSON satisfies json.Unmarshaler.
-func (t *PseudoType) UnmarshalJSON(buf []byte) error {
-	return easyjson.Unmarshal(buf, t)
+	return nil
 }
 
 // ShadowRootType shadow root type.
@@ -323,35 +328,22 @@ const (
 	ShadowRootTypeClosed    ShadowRootType = "closed"
 )
 
-// MarshalEasyJSON satisfies easyjson.Marshaler.
-func (t ShadowRootType) MarshalEasyJSON(out *jwriter.Writer) {
-	out.String(string(t))
-}
+// UnmarshalJSON satisfies [json.Unmarshaler].
+func (t *ShadowRootType) UnmarshalJSON(buf []byte) error {
+	s := string(buf)
+	s = strings.TrimSuffix(strings.TrimPrefix(s, `"`), `"`)
 
-// MarshalJSON satisfies json.Marshaler.
-func (t ShadowRootType) MarshalJSON() ([]byte, error) {
-	return easyjson.Marshal(t)
-}
-
-// UnmarshalEasyJSON satisfies easyjson.Unmarshaler.
-func (t *ShadowRootType) UnmarshalEasyJSON(in *jlexer.Lexer) {
-	v := in.String()
-	switch ShadowRootType(v) {
+	switch ShadowRootType(s) {
 	case ShadowRootTypeUserAgent:
 		*t = ShadowRootTypeUserAgent
 	case ShadowRootTypeOpen:
 		*t = ShadowRootTypeOpen
 	case ShadowRootTypeClosed:
 		*t = ShadowRootTypeClosed
-
 	default:
-		in.AddError(fmt.Errorf("unknown ShadowRootType value: %v", v))
+		return fmt.Errorf("unknown ShadowRootType value: %v", s)
 	}
-}
-
-// UnmarshalJSON satisfies json.Unmarshaler.
-func (t *ShadowRootType) UnmarshalJSON(buf []byte) error {
-	return easyjson.Unmarshal(buf, t)
+	return nil
 }
 
 // CompatibilityMode document compatibility mode.
@@ -371,35 +363,22 @@ const (
 	CompatibilityModeNoQuirksMode      CompatibilityMode = "NoQuirksMode"
 )
 
-// MarshalEasyJSON satisfies easyjson.Marshaler.
-func (t CompatibilityMode) MarshalEasyJSON(out *jwriter.Writer) {
-	out.String(string(t))
-}
+// UnmarshalJSON satisfies [json.Unmarshaler].
+func (t *CompatibilityMode) UnmarshalJSON(buf []byte) error {
+	s := string(buf)
+	s = strings.TrimSuffix(strings.TrimPrefix(s, `"`), `"`)
 
-// MarshalJSON satisfies json.Marshaler.
-func (t CompatibilityMode) MarshalJSON() ([]byte, error) {
-	return easyjson.Marshal(t)
-}
-
-// UnmarshalEasyJSON satisfies easyjson.Unmarshaler.
-func (t *CompatibilityMode) UnmarshalEasyJSON(in *jlexer.Lexer) {
-	v := in.String()
-	switch CompatibilityMode(v) {
+	switch CompatibilityMode(s) {
 	case CompatibilityModeQuirksMode:
 		*t = CompatibilityModeQuirksMode
 	case CompatibilityModeLimitedQuirksMode:
 		*t = CompatibilityModeLimitedQuirksMode
 	case CompatibilityModeNoQuirksMode:
 		*t = CompatibilityModeNoQuirksMode
-
 	default:
-		in.AddError(fmt.Errorf("unknown CompatibilityMode value: %v", v))
+		return fmt.Errorf("unknown CompatibilityMode value: %v", s)
 	}
-}
-
-// UnmarshalJSON satisfies json.Unmarshaler.
-func (t *CompatibilityMode) UnmarshalJSON(buf []byte) error {
-	return easyjson.Unmarshal(buf, t)
+	return nil
 }
 
 // Node DOM interaction is implemented in terms of mirror objects that
@@ -407,41 +386,44 @@ func (t *CompatibilityMode) UnmarshalJSON(buf []byte) error {
 //
 // See: https://chromedevtools.github.io/devtools-protocol/tot/DOM#type-Node
 type Node struct {
-	NodeID            NodeID            `json:"nodeId"`                     // Node identifier that is passed into the rest of the DOM messages as the nodeId. Backend will only push node with given id once. It is aware of all requested nodes and will only fire DOM events for nodes known to the client.
-	ParentID          NodeID            `json:"parentId,omitempty"`         // The id of the parent node if any.
-	BackendNodeID     BackendNodeID     `json:"backendNodeId"`              // The BackendNodeId for this node.
-	NodeType          NodeType          `json:"nodeType"`                   // Node's nodeType.
-	NodeName          string            `json:"nodeName"`                   // Node's nodeName.
-	LocalName         string            `json:"localName"`                  // Node's localName.
-	NodeValue         string            `json:"nodeValue"`                  // Node's nodeValue.
-	ChildNodeCount    int64             `json:"childNodeCount,omitempty"`   // Child count for Container nodes.
-	Children          []*Node           `json:"children,omitempty"`         // Child nodes of this node when requested with children.
-	Attributes        []string          `json:"attributes,omitempty"`       // Attributes of the Element node in the form of flat array [name1, value1, name2, value2].
-	DocumentURL       string            `json:"documentURL,omitempty"`      // Document URL that Document or FrameOwner node points to.
-	BaseURL           string            `json:"baseURL,omitempty"`          // Base URL that Document or FrameOwner node uses for URL completion.
-	PublicID          string            `json:"publicId,omitempty"`         // DocumentType's publicId.
-	SystemID          string            `json:"systemId,omitempty"`         // DocumentType's systemId.
-	InternalSubset    string            `json:"internalSubset,omitempty"`   // DocumentType's internalSubset.
-	XMLVersion        string            `json:"xmlVersion,omitempty"`       // Document's XML version in case of XML documents.
-	Name              string            `json:"name,omitempty"`             // Attr's name.
-	Value             string            `json:"value,omitempty"`            // Attr's value.
-	PseudoType        PseudoType        `json:"pseudoType,omitempty"`       // Pseudo element type for this node.
-	PseudoIdentifier  string            `json:"pseudoIdentifier,omitempty"` // Pseudo element identifier for this node. Only present if there is a valid pseudoType.
-	ShadowRootType    ShadowRootType    `json:"shadowRootType,omitempty"`   // Shadow root type.
-	FrameID           FrameID           `json:"frameId,omitempty"`          // Frame ID for frame owner elements.
-	ContentDocument   *Node             `json:"contentDocument,omitempty"`  // Content document for frame owner elements.
-	ShadowRoots       []*Node           `json:"shadowRoots,omitempty"`      // Shadow root list for given element host.
-	TemplateContent   *Node             `json:"templateContent,omitempty"`  // Content document fragment for template elements.
-	PseudoElements    []*Node           `json:"pseudoElements,omitempty"`   // Pseudo elements associated with this node.
-	DistributedNodes  []*BackendNode    `json:"distributedNodes,omitempty"` // Distributed nodes for given insertion point.
-	IsSVG             bool              `json:"isSVG,omitempty"`            // Whether the node is SVG.
-	CompatibilityMode CompatibilityMode `json:"compatibilityMode,omitempty"`
-	AssignedSlot      *BackendNode      `json:"assignedSlot,omitempty"`
-	IsScrollable      bool              `json:"isScrollable,omitempty"`
-	Parent            *Node             `json:"-"` // Parent node.
-	Invalidated       chan struct{}     `json:"-"` // Invalidated channel.
-	State             NodeState         `json:"-"` // Node state.
-	sync.RWMutex      `json:"-"`        // Read write mutex.
+	NodeID                   NodeID            `json:"nodeId"`                              // Node identifier that is passed into the rest of the DOM messages as the nodeId. Backend will only push node with given id once. It is aware of all requested nodes and will only fire DOM events for nodes known to the client.
+	ParentID                 NodeID            `json:"parentId,omitempty,omitzero"`         // The id of the parent node if any.
+	BackendNodeID            BackendNodeID     `json:"backendNodeId"`                       // The BackendNodeId for this node.
+	NodeType                 NodeType          `json:"nodeType"`                            // Node's nodeType.
+	NodeName                 string            `json:"nodeName"`                            // Node's nodeName.
+	LocalName                string            `json:"localName"`                           // Node's localName.
+	NodeValue                string            `json:"nodeValue"`                           // Node's nodeValue.
+	ChildNodeCount           int64             `json:"childNodeCount,omitempty,omitzero"`   // Child count for Container nodes.
+	Children                 []*Node           `json:"children,omitempty,omitzero"`         // Child nodes of this node when requested with children.
+	Attributes               []string          `json:"attributes,omitempty,omitzero"`       // Attributes of the Element node in the form of flat array [name1, value1, name2, value2].
+	DocumentURL              string            `json:"documentURL,omitempty,omitzero"`      // Document URL that Document or FrameOwner node points to.
+	BaseURL                  string            `json:"baseURL,omitempty,omitzero"`          // Base URL that Document or FrameOwner node uses for URL completion.
+	PublicID                 string            `json:"publicId,omitempty,omitzero"`         // DocumentType's publicId.
+	SystemID                 string            `json:"systemId,omitempty,omitzero"`         // DocumentType's systemId.
+	InternalSubset           string            `json:"internalSubset,omitempty,omitzero"`   // DocumentType's internalSubset.
+	XMLVersion               string            `json:"xmlVersion,omitempty,omitzero"`       // Document's XML version in case of XML documents.
+	Name                     string            `json:"name,omitempty,omitzero"`             // Attr's name.
+	Value                    string            `json:"value,omitempty,omitzero"`            // Attr's value.
+	PseudoType               PseudoType        `json:"pseudoType,omitempty,omitzero"`       // Pseudo element type for this node.
+	PseudoIdentifier         string            `json:"pseudoIdentifier,omitempty,omitzero"` // Pseudo element identifier for this node. Only present if there is a valid pseudoType.
+	ShadowRootType           ShadowRootType    `json:"shadowRootType,omitempty,omitzero"`   // Shadow root type.
+	FrameID                  FrameID           `json:"frameId,omitempty,omitzero"`          // Frame ID for frame owner elements.
+	ContentDocument          *Node             `json:"contentDocument,omitempty,omitzero"`  // Content document for frame owner elements.
+	ShadowRoots              []*Node           `json:"shadowRoots,omitempty,omitzero"`      // Shadow root list for given element host.
+	TemplateContent          *Node             `json:"templateContent,omitempty,omitzero"`  // Content document fragment for template elements.
+	PseudoElements           []*Node           `json:"pseudoElements,omitempty,omitzero"`   // Pseudo elements associated with this node.
+	DistributedNodes         []*BackendNode    `json:"distributedNodes,omitempty,omitzero"` // Distributed nodes for given insertion point.
+	IsSVG                    bool              `json:"isSVG"`                               // Whether the node is SVG.
+	CompatibilityMode        CompatibilityMode `json:"compatibilityMode,omitempty,omitzero"`
+	AssignedSlot             *BackendNode      `json:"assignedSlot,omitempty,omitzero"`
+	IsScrollable             bool              `json:"isScrollable"`
+	AffectedByStartingStyles bool              `json:"affectedByStartingStyles"`
+	AdoptedStyleSheets       []StyleSheetID    `json:"adoptedStyleSheets,omitempty,omitzero"`
+	AdProvenance             *AdProvenance     `json:"adProvenance,omitempty,omitzero"`
+	Parent                   *Node             `json:"-"` // Parent node.
+	Invalidated              chan struct{}     `json:"-"` // Invalidated channel.
+	State                    NodeState         `json:"-"` // Node state.
+	sync.RWMutex             `json:"-"`        // Read write mutex.
 }
 
 // AttributeValue returns the named attribute for the node.
@@ -719,7 +701,7 @@ const (
 	NodeTypeNotation              NodeType = 12
 )
 
-// String returns the NodeType as string value.
+// String satisfies the [fmt.Stringer] interface.
 func (t NodeType) String() string {
 	switch t {
 	case NodeTypeElement:
@@ -747,23 +729,16 @@ func (t NodeType) String() string {
 	case NodeTypeNotation:
 		return "Notation"
 	}
-
 	return fmt.Sprintf("NodeType(%d)", t)
 }
 
-// MarshalEasyJSON satisfies easyjson.Marshaler.
-func (t NodeType) MarshalEasyJSON(out *jwriter.Writer) {
-	out.Int64(int64(t))
-}
-
-// MarshalJSON satisfies json.Marshaler.
-func (t NodeType) MarshalJSON() ([]byte, error) {
-	return easyjson.Marshal(t)
-}
-
-// UnmarshalEasyJSON satisfies easyjson.Unmarshaler.
-func (t *NodeType) UnmarshalEasyJSON(in *jlexer.Lexer) {
-	v := in.Int64()
+// UnmarshalJSON satisfies [json.Unmarshaler].
+func (t *NodeType) UnmarshalJSON(buf []byte) error {
+	s := string(buf)
+	v, err := strconv.ParseInt(s, 10, 64)
+	if err != nil {
+		return err
+	}
 	switch NodeType(v) {
 	case NodeTypeElement:
 		*t = NodeTypeElement
@@ -789,15 +764,10 @@ func (t *NodeType) UnmarshalEasyJSON(in *jlexer.Lexer) {
 		*t = NodeTypeDocumentFragment
 	case NodeTypeNotation:
 		*t = NodeTypeNotation
-
 	default:
-		in.AddError(fmt.Errorf("unknown NodeType value: %v", v))
+		return fmt.Errorf("unknown NodeType value: %v", s)
 	}
-}
-
-// UnmarshalJSON satisfies json.Unmarshaler.
-func (t *NodeType) UnmarshalJSON(buf []byte) error {
-	return easyjson.Unmarshal(buf, t)
+	return nil
 }
 
 // LoaderID unique loader identifier.
@@ -820,27 +790,20 @@ func (t TimeSinceEpoch) Time() time.Time {
 	return time.Time(t)
 }
 
-// MarshalEasyJSON satisfies easyjson.Marshaler.
-func (t TimeSinceEpoch) MarshalEasyJSON(out *jwriter.Writer) {
-	v := float64(time.Time(t).UnixNano() / int64(time.Second))
-
-	out.Buffer.EnsureSpace(20)
-	out.Buffer.Buf = strconv.AppendFloat(out.Buffer.Buf, v, 'f', -1, 64)
-}
-
-// MarshalJSON satisfies json.Marshaler.
+// MarshalJSON satisfies [json.Marshaler].
 func (t TimeSinceEpoch) MarshalJSON() ([]byte, error) {
-	return easyjson.Marshal(t)
+	v := float64(time.Time(t).UnixNano() / int64(time.Second))
+	return strconv.AppendFloat(make([]byte, 0, 20), v, 'f', -1, 64), nil
 }
 
-// UnmarshalEasyJSON satisfies easyjson.Unmarshaler.
-func (t *TimeSinceEpoch) UnmarshalEasyJSON(in *jlexer.Lexer) {
-	*t = TimeSinceEpoch(time.Unix(0, int64(in.Float64()*float64(time.Second))))
-}
-
-// UnmarshalJSON satisfies json.Unmarshaler.
+// UnmarshalJSON satisfies [json.Unmarshaler].
 func (t *TimeSinceEpoch) UnmarshalJSON(buf []byte) error {
-	return easyjson.Unmarshal(buf, t)
+	f, err := strconv.ParseFloat(string(buf), 64)
+	if err != nil {
+		return err
+	}
+	*t = TimeSinceEpoch(time.Unix(0, int64(f*float64(time.Second))))
+	return nil
 }
 
 // MonotonicTime monotonically increasing time in seconds since an arbitrary
@@ -863,27 +826,54 @@ func init() {
 	MonotonicTimeEpoch = &bt
 }
 
-// MarshalEasyJSON satisfies easyjson.Marshaler.
-func (t MonotonicTime) MarshalEasyJSON(out *jwriter.Writer) {
-	v := float64(time.Time(t).Sub(*MonotonicTimeEpoch)) / float64(time.Second)
-
-	out.Buffer.EnsureSpace(20)
-	out.Buffer.Buf = strconv.AppendFloat(out.Buffer.Buf, v, 'f', -1, 64)
-}
-
-// MarshalJSON satisfies json.Marshaler.
+// MarshalJSON satisfies [json.Marshaler].
 func (t MonotonicTime) MarshalJSON() ([]byte, error) {
-	return easyjson.Marshal(t)
+	v := float64(time.Time(t).Sub(*MonotonicTimeEpoch)) / float64(time.Second)
+	return strconv.AppendFloat(make([]byte, 0, 20), v, 'f', -1, 64), nil
 }
 
-// UnmarshalEasyJSON satisfies easyjson.Unmarshaler.
-func (t *MonotonicTime) UnmarshalEasyJSON(in *jlexer.Lexer) {
-	*t = MonotonicTime(MonotonicTimeEpoch.Add(time.Duration(in.Float64() * float64(time.Second))))
-}
-
-// UnmarshalJSON satisfies json.Unmarshaler.
+// UnmarshalJSON satisfies [json.Unmarshaler].
 func (t *MonotonicTime) UnmarshalJSON(buf []byte) error {
-	return easyjson.Unmarshal(buf, t)
+	f, err := strconv.ParseFloat(string(buf), 64)
+	if err != nil {
+		return err
+	}
+	*t = MonotonicTime(MonotonicTimeEpoch.Add(time.Duration(f * float64(time.Second))))
+	return nil
+}
+
+// AdScriptIdentifier identifies the script on the stack that caused a
+// resource or element to be labeled as an ad. For resources, this indicates the
+// context that triggered the fetch. For elements, this indicates the context
+// that caused the element to be appended to the DOM.
+//
+// See: https://chromedevtools.github.io/devtools-protocol/tot/Network#type-AdScriptIdentifier
+type AdScriptIdentifier struct {
+	ScriptID   ScriptID         `json:"scriptId"`   // The script's V8 identifier.
+	DebuggerID UniqueDebuggerID `json:"debuggerId"` // V8's debugging ID for the v8::Context.
+	Name       string           `json:"name"`       // The script's url (or generated name based on id if inline script).
+}
+
+// AdAncestry encapsulates the script ancestry and the root script filter
+// list rule that caused the resource or element to be labeled as an ad.
+//
+// See: https://chromedevtools.github.io/devtools-protocol/tot/Network#type-AdAncestry
+type AdAncestry struct {
+	AncestryChain            []*AdScriptIdentifier `json:"ancestryChain"`                               // A chain of AdScriptIdentifiers representing the ancestry of an ad script that led to the creation of a resource or element. The chain is ordered from the script itself (lowest level) up to its root ancestor that was flagged by a filter list.
+	RootScriptFilterlistRule string                `json:"rootScriptFilterlistRule,omitempty,omitzero"` // The filter list rule that caused the root (last) script in ancestryChain to be tagged as an ad.
+}
+
+// AdProvenance represents the provenance of an ad resource or element. Only
+// one of filterlistRule or adScriptAncestry can be set. If filterlistRule is
+// provided, the resource URL directly matches a filter list rule. If
+// adScriptAncestry is provided, an ad script initiated the resource fetch or
+// appended the element to the DOM. If neither is provided, the entity is known
+// to be an ad, but provenance tracking information is unavailable.
+//
+// See: https://chromedevtools.github.io/devtools-protocol/tot/Network#type-AdProvenance
+type AdProvenance struct {
+	FilterlistRule   string      `json:"filterlistRule,omitempty,omitzero"`   // The filterlist rule that matched, if any.
+	AdScriptAncestry *AdAncestry `json:"adScriptAncestry,omitempty,omitzero"` // The script ancestry that created the ad, if any. Note: depending on the context, this may represent the full ancestry up to the root script, or it may contain only one script representing the immediate ancestor.
 }
 
 // TimeSinceEpochMilli special timestamp type for Response's responseTime
@@ -897,27 +887,20 @@ func (t TimeSinceEpochMilli) Time() time.Time {
 	return time.Time(t)
 }
 
-// MarshalEasyJSON satisfies easyjson.Marshaler.
-func (t TimeSinceEpochMilli) MarshalEasyJSON(out *jwriter.Writer) {
-	v := float64(time.Time(t).UnixNano() / int64(time.Millisecond))
-
-	out.Buffer.EnsureSpace(20)
-	out.Buffer.Buf = strconv.AppendFloat(out.Buffer.Buf, v, 'f', -1, 64)
-}
-
-// MarshalJSON satisfies json.Marshaler.
+// MarshalJSON satisfies [json.Marshaler].
 func (t TimeSinceEpochMilli) MarshalJSON() ([]byte, error) {
-	return easyjson.Marshal(t)
+	v := float64(time.Time(t).UnixNano() / int64(time.Millisecond))
+	return strconv.AppendFloat(make([]byte, 0, 20), v, 'f', -1, 64), nil
 }
 
-// UnmarshalEasyJSON satisfies easyjson.Unmarshaler.
-func (t *TimeSinceEpochMilli) UnmarshalEasyJSON(in *jlexer.Lexer) {
-	*t = TimeSinceEpochMilli(time.Unix(0, int64(in.Float64()*float64(time.Millisecond))))
-}
-
-// UnmarshalJSON satisfies json.Unmarshaler.
+// UnmarshalJSON satisfies [json.Unmarshaler].
 func (t *TimeSinceEpochMilli) UnmarshalJSON(buf []byte) error {
-	return easyjson.Unmarshal(buf, t)
+	f, err := strconv.ParseFloat(string(buf), 64)
+	if err != nil {
+		return err
+	}
+	*t = TimeSinceEpochMilli(time.Unix(0, int64(f*float64(time.Millisecond))))
+	return nil
 }
 
 // FrameID unique frame identifier.
@@ -930,19 +913,14 @@ func (t FrameID) String() string {
 	return string(t)
 }
 
-// UnmarshalEasyJSON satisfies easyjson.Unmarshaler.
-func (t *FrameID) UnmarshalEasyJSON(in *jlexer.Lexer) {
-	buf := in.Raw()
+// UnmarshalJSON satisfies [json.Unmarshaler].
+func (t *FrameID) UnmarshalJSON(buf []byte) error {
 	if l := len(buf); l > 2 && buf[0] == '"' && buf[l-1] == '"' {
 		buf = buf[1 : l-1]
 	}
 
 	*t = FrameID(buf)
-}
-
-// UnmarshalJSON satisfies json.Unmarshaler.
-func (t *FrameID) UnmarshalJSON(buf []byte) error {
-	return easyjson.Unmarshal(buf, t)
+	return nil
 }
 
 // AdFrameType indicates whether a frame has been identified as an ad.
@@ -962,35 +940,22 @@ const (
 	AdFrameTypeRoot  AdFrameType = "root"
 )
 
-// MarshalEasyJSON satisfies easyjson.Marshaler.
-func (t AdFrameType) MarshalEasyJSON(out *jwriter.Writer) {
-	out.String(string(t))
-}
+// UnmarshalJSON satisfies [json.Unmarshaler].
+func (t *AdFrameType) UnmarshalJSON(buf []byte) error {
+	s := string(buf)
+	s = strings.TrimSuffix(strings.TrimPrefix(s, `"`), `"`)
 
-// MarshalJSON satisfies json.Marshaler.
-func (t AdFrameType) MarshalJSON() ([]byte, error) {
-	return easyjson.Marshal(t)
-}
-
-// UnmarshalEasyJSON satisfies easyjson.Unmarshaler.
-func (t *AdFrameType) UnmarshalEasyJSON(in *jlexer.Lexer) {
-	v := in.String()
-	switch AdFrameType(v) {
+	switch AdFrameType(s) {
 	case AdFrameTypeNone:
 		*t = AdFrameTypeNone
 	case AdFrameTypeChild:
 		*t = AdFrameTypeChild
 	case AdFrameTypeRoot:
 		*t = AdFrameTypeRoot
-
 	default:
-		in.AddError(fmt.Errorf("unknown AdFrameType value: %v", v))
+		return fmt.Errorf("unknown AdFrameType value: %v", s)
 	}
-}
-
-// UnmarshalJSON satisfies json.Unmarshaler.
-func (t *AdFrameType) UnmarshalJSON(buf []byte) error {
-	return easyjson.Unmarshal(buf, t)
+	return nil
 }
 
 // AdFrameExplanation [no description].
@@ -1010,35 +975,22 @@ const (
 	AdFrameExplanationMatchedBlockingRule AdFrameExplanation = "MatchedBlockingRule"
 )
 
-// MarshalEasyJSON satisfies easyjson.Marshaler.
-func (t AdFrameExplanation) MarshalEasyJSON(out *jwriter.Writer) {
-	out.String(string(t))
-}
+// UnmarshalJSON satisfies [json.Unmarshaler].
+func (t *AdFrameExplanation) UnmarshalJSON(buf []byte) error {
+	s := string(buf)
+	s = strings.TrimSuffix(strings.TrimPrefix(s, `"`), `"`)
 
-// MarshalJSON satisfies json.Marshaler.
-func (t AdFrameExplanation) MarshalJSON() ([]byte, error) {
-	return easyjson.Marshal(t)
-}
-
-// UnmarshalEasyJSON satisfies easyjson.Unmarshaler.
-func (t *AdFrameExplanation) UnmarshalEasyJSON(in *jlexer.Lexer) {
-	v := in.String()
-	switch AdFrameExplanation(v) {
+	switch AdFrameExplanation(s) {
 	case AdFrameExplanationParentIsAd:
 		*t = AdFrameExplanationParentIsAd
 	case AdFrameExplanationCreatedByAdScript:
 		*t = AdFrameExplanationCreatedByAdScript
 	case AdFrameExplanationMatchedBlockingRule:
 		*t = AdFrameExplanationMatchedBlockingRule
-
 	default:
-		in.AddError(fmt.Errorf("unknown AdFrameExplanation value: %v", v))
+		return fmt.Errorf("unknown AdFrameExplanation value: %v", s)
 	}
-}
-
-// UnmarshalJSON satisfies json.Unmarshaler.
-func (t *AdFrameExplanation) UnmarshalJSON(buf []byte) error {
-	return easyjson.Unmarshal(buf, t)
+	return nil
 }
 
 // AdFrameStatus indicates whether a frame has been identified as an ad and
@@ -1047,7 +999,7 @@ func (t *AdFrameExplanation) UnmarshalJSON(buf []byte) error {
 // See: https://chromedevtools.github.io/devtools-protocol/tot/Page#type-AdFrameStatus
 type AdFrameStatus struct {
 	AdFrameType  AdFrameType          `json:"adFrameType"`
-	Explanations []AdFrameExplanation `json:"explanations,omitempty"`
+	Explanations []AdFrameExplanation `json:"explanations,omitempty,omitzero"`
 }
 
 // SecureContextType indicates whether the frame is a secure context and why
@@ -1069,20 +1021,12 @@ const (
 	SecureContextTypeInsecureAncestor SecureContextType = "InsecureAncestor"
 )
 
-// MarshalEasyJSON satisfies easyjson.Marshaler.
-func (t SecureContextType) MarshalEasyJSON(out *jwriter.Writer) {
-	out.String(string(t))
-}
+// UnmarshalJSON satisfies [json.Unmarshaler].
+func (t *SecureContextType) UnmarshalJSON(buf []byte) error {
+	s := string(buf)
+	s = strings.TrimSuffix(strings.TrimPrefix(s, `"`), `"`)
 
-// MarshalJSON satisfies json.Marshaler.
-func (t SecureContextType) MarshalJSON() ([]byte, error) {
-	return easyjson.Marshal(t)
-}
-
-// UnmarshalEasyJSON satisfies easyjson.Unmarshaler.
-func (t *SecureContextType) UnmarshalEasyJSON(in *jlexer.Lexer) {
-	v := in.String()
-	switch SecureContextType(v) {
+	switch SecureContextType(s) {
 	case SecureContextTypeSecure:
 		*t = SecureContextTypeSecure
 	case SecureContextTypeSecureLocalhost:
@@ -1091,15 +1035,10 @@ func (t *SecureContextType) UnmarshalEasyJSON(in *jlexer.Lexer) {
 		*t = SecureContextTypeInsecureScheme
 	case SecureContextTypeInsecureAncestor:
 		*t = SecureContextTypeInsecureAncestor
-
 	default:
-		in.AddError(fmt.Errorf("unknown SecureContextType value: %v", v))
+		return fmt.Errorf("unknown SecureContextType value: %v", s)
 	}
-}
-
-// UnmarshalJSON satisfies json.Unmarshaler.
-func (t *SecureContextType) UnmarshalJSON(buf []byte) error {
-	return easyjson.Unmarshal(buf, t)
+	return nil
 }
 
 // CrossOriginIsolatedContextType indicates whether the frame is cross-origin
@@ -1120,35 +1059,22 @@ const (
 	CrossOriginIsolatedContextTypeNotIsolatedFeatureDisabled CrossOriginIsolatedContextType = "NotIsolatedFeatureDisabled"
 )
 
-// MarshalEasyJSON satisfies easyjson.Marshaler.
-func (t CrossOriginIsolatedContextType) MarshalEasyJSON(out *jwriter.Writer) {
-	out.String(string(t))
-}
+// UnmarshalJSON satisfies [json.Unmarshaler].
+func (t *CrossOriginIsolatedContextType) UnmarshalJSON(buf []byte) error {
+	s := string(buf)
+	s = strings.TrimSuffix(strings.TrimPrefix(s, `"`), `"`)
 
-// MarshalJSON satisfies json.Marshaler.
-func (t CrossOriginIsolatedContextType) MarshalJSON() ([]byte, error) {
-	return easyjson.Marshal(t)
-}
-
-// UnmarshalEasyJSON satisfies easyjson.Unmarshaler.
-func (t *CrossOriginIsolatedContextType) UnmarshalEasyJSON(in *jlexer.Lexer) {
-	v := in.String()
-	switch CrossOriginIsolatedContextType(v) {
+	switch CrossOriginIsolatedContextType(s) {
 	case CrossOriginIsolatedContextTypeIsolated:
 		*t = CrossOriginIsolatedContextTypeIsolated
 	case CrossOriginIsolatedContextTypeNotIsolated:
 		*t = CrossOriginIsolatedContextTypeNotIsolated
 	case CrossOriginIsolatedContextTypeNotIsolatedFeatureDisabled:
 		*t = CrossOriginIsolatedContextTypeNotIsolatedFeatureDisabled
-
 	default:
-		in.AddError(fmt.Errorf("unknown CrossOriginIsolatedContextType value: %v", v))
+		return fmt.Errorf("unknown CrossOriginIsolatedContextType value: %v", s)
 	}
-}
-
-// UnmarshalJSON satisfies json.Unmarshaler.
-func (t *CrossOriginIsolatedContextType) UnmarshalJSON(buf []byte) error {
-	return easyjson.Unmarshal(buf, t)
+	return nil
 }
 
 // GatedAPIFeatures [no description].
@@ -1169,20 +1095,12 @@ const (
 	GatedAPIFeaturesPerformanceProfile                GatedAPIFeatures = "PerformanceProfile"
 )
 
-// MarshalEasyJSON satisfies easyjson.Marshaler.
-func (t GatedAPIFeatures) MarshalEasyJSON(out *jwriter.Writer) {
-	out.String(string(t))
-}
+// UnmarshalJSON satisfies [json.Unmarshaler].
+func (t *GatedAPIFeatures) UnmarshalJSON(buf []byte) error {
+	s := string(buf)
+	s = strings.TrimSuffix(strings.TrimPrefix(s, `"`), `"`)
 
-// MarshalJSON satisfies json.Marshaler.
-func (t GatedAPIFeatures) MarshalJSON() ([]byte, error) {
-	return easyjson.Marshal(t)
-}
-
-// UnmarshalEasyJSON satisfies easyjson.Unmarshaler.
-func (t *GatedAPIFeatures) UnmarshalEasyJSON(in *jlexer.Lexer) {
-	v := in.String()
-	switch GatedAPIFeatures(v) {
+	switch GatedAPIFeatures(s) {
 	case GatedAPIFeaturesSharedArrayBuffers:
 		*t = GatedAPIFeaturesSharedArrayBuffers
 	case GatedAPIFeaturesSharedArrayBuffersTransferAllowed:
@@ -1191,15 +1109,10 @@ func (t *GatedAPIFeatures) UnmarshalEasyJSON(in *jlexer.Lexer) {
 		*t = GatedAPIFeaturesPerformanceMeasureMemory
 	case GatedAPIFeaturesPerformanceProfile:
 		*t = GatedAPIFeaturesPerformanceProfile
-
 	default:
-		in.AddError(fmt.Errorf("unknown GatedAPIFeatures value: %v", v))
+		return fmt.Errorf("unknown GatedAPIFeatures value: %v", s)
 	}
-}
-
-// UnmarshalJSON satisfies json.Unmarshaler.
-func (t *GatedAPIFeatures) UnmarshalJSON(buf []byte) error {
-	return easyjson.Unmarshal(buf, t)
+	return nil
 }
 
 // OriginTrialTokenStatus origin
@@ -1230,20 +1143,12 @@ const (
 	OriginTrialTokenStatusUnknownTrial           OriginTrialTokenStatus = "UnknownTrial"
 )
 
-// MarshalEasyJSON satisfies easyjson.Marshaler.
-func (t OriginTrialTokenStatus) MarshalEasyJSON(out *jwriter.Writer) {
-	out.String(string(t))
-}
+// UnmarshalJSON satisfies [json.Unmarshaler].
+func (t *OriginTrialTokenStatus) UnmarshalJSON(buf []byte) error {
+	s := string(buf)
+	s = strings.TrimSuffix(strings.TrimPrefix(s, `"`), `"`)
 
-// MarshalJSON satisfies json.Marshaler.
-func (t OriginTrialTokenStatus) MarshalJSON() ([]byte, error) {
-	return easyjson.Marshal(t)
-}
-
-// UnmarshalEasyJSON satisfies easyjson.Unmarshaler.
-func (t *OriginTrialTokenStatus) UnmarshalEasyJSON(in *jlexer.Lexer) {
-	v := in.String()
-	switch OriginTrialTokenStatus(v) {
+	switch OriginTrialTokenStatus(s) {
 	case OriginTrialTokenStatusSuccess:
 		*t = OriginTrialTokenStatusSuccess
 	case OriginTrialTokenStatusNotSupported:
@@ -1268,15 +1173,10 @@ func (t *OriginTrialTokenStatus) UnmarshalEasyJSON(in *jlexer.Lexer) {
 		*t = OriginTrialTokenStatusFeatureDisabledForUser
 	case OriginTrialTokenStatusUnknownTrial:
 		*t = OriginTrialTokenStatusUnknownTrial
-
 	default:
-		in.AddError(fmt.Errorf("unknown OriginTrialTokenStatus value: %v", v))
+		return fmt.Errorf("unknown OriginTrialTokenStatus value: %v", s)
 	}
-}
-
-// UnmarshalJSON satisfies json.Unmarshaler.
-func (t *OriginTrialTokenStatus) UnmarshalJSON(buf []byte) error {
-	return easyjson.Unmarshal(buf, t)
+	return nil
 }
 
 // OriginTrialStatus status for an Origin Trial.
@@ -1297,20 +1197,12 @@ const (
 	OriginTrialStatusTrialNotAllowed       OriginTrialStatus = "TrialNotAllowed"
 )
 
-// MarshalEasyJSON satisfies easyjson.Marshaler.
-func (t OriginTrialStatus) MarshalEasyJSON(out *jwriter.Writer) {
-	out.String(string(t))
-}
+// UnmarshalJSON satisfies [json.Unmarshaler].
+func (t *OriginTrialStatus) UnmarshalJSON(buf []byte) error {
+	s := string(buf)
+	s = strings.TrimSuffix(strings.TrimPrefix(s, `"`), `"`)
 
-// MarshalJSON satisfies json.Marshaler.
-func (t OriginTrialStatus) MarshalJSON() ([]byte, error) {
-	return easyjson.Marshal(t)
-}
-
-// UnmarshalEasyJSON satisfies easyjson.Unmarshaler.
-func (t *OriginTrialStatus) UnmarshalEasyJSON(in *jlexer.Lexer) {
-	v := in.String()
-	switch OriginTrialStatus(v) {
+	switch OriginTrialStatus(s) {
 	case OriginTrialStatusEnabled:
 		*t = OriginTrialStatusEnabled
 	case OriginTrialStatusValidTokenNotProvided:
@@ -1319,15 +1211,10 @@ func (t *OriginTrialStatus) UnmarshalEasyJSON(in *jlexer.Lexer) {
 		*t = OriginTrialStatusOSNotSupported
 	case OriginTrialStatusTrialNotAllowed:
 		*t = OriginTrialStatusTrialNotAllowed
-
 	default:
-		in.AddError(fmt.Errorf("unknown OriginTrialStatus value: %v", v))
+		return fmt.Errorf("unknown OriginTrialStatus value: %v", s)
 	}
-}
-
-// UnmarshalJSON satisfies json.Unmarshaler.
-func (t *OriginTrialStatus) UnmarshalJSON(buf []byte) error {
-	return easyjson.Unmarshal(buf, t)
+	return nil
 }
 
 // OriginTrialUsageRestriction [no description].
@@ -1346,33 +1233,20 @@ const (
 	OriginTrialUsageRestrictionSubset OriginTrialUsageRestriction = "Subset"
 )
 
-// MarshalEasyJSON satisfies easyjson.Marshaler.
-func (t OriginTrialUsageRestriction) MarshalEasyJSON(out *jwriter.Writer) {
-	out.String(string(t))
-}
+// UnmarshalJSON satisfies [json.Unmarshaler].
+func (t *OriginTrialUsageRestriction) UnmarshalJSON(buf []byte) error {
+	s := string(buf)
+	s = strings.TrimSuffix(strings.TrimPrefix(s, `"`), `"`)
 
-// MarshalJSON satisfies json.Marshaler.
-func (t OriginTrialUsageRestriction) MarshalJSON() ([]byte, error) {
-	return easyjson.Marshal(t)
-}
-
-// UnmarshalEasyJSON satisfies easyjson.Unmarshaler.
-func (t *OriginTrialUsageRestriction) UnmarshalEasyJSON(in *jlexer.Lexer) {
-	v := in.String()
-	switch OriginTrialUsageRestriction(v) {
+	switch OriginTrialUsageRestriction(s) {
 	case OriginTrialUsageRestrictionNone:
 		*t = OriginTrialUsageRestrictionNone
 	case OriginTrialUsageRestrictionSubset:
 		*t = OriginTrialUsageRestrictionSubset
-
 	default:
-		in.AddError(fmt.Errorf("unknown OriginTrialUsageRestriction value: %v", v))
+		return fmt.Errorf("unknown OriginTrialUsageRestriction value: %v", s)
 	}
-}
-
-// UnmarshalJSON satisfies json.Unmarshaler.
-func (t *OriginTrialUsageRestriction) UnmarshalJSON(buf []byte) error {
-	return easyjson.Unmarshal(buf, t)
+	return nil
 }
 
 // OriginTrialToken [no description].
@@ -1392,7 +1266,7 @@ type OriginTrialToken struct {
 // See: https://chromedevtools.github.io/devtools-protocol/tot/Page#type-OriginTrialTokenWithStatus
 type OriginTrialTokenWithStatus struct {
 	RawTokenText string                 `json:"rawTokenText"`
-	ParsedToken  *OriginTrialToken      `json:"parsedToken,omitempty"` // parsedToken is present only when the token is extractable and parsable.
+	ParsedToken  *OriginTrialToken      `json:"parsedToken,omitempty,omitzero"` // parsedToken is present only when the token is extractable and parsable.
 	Status       OriginTrialTokenStatus `json:"status"`
 }
 
@@ -1405,27 +1279,36 @@ type OriginTrial struct {
 	TokensWithStatus []*OriginTrialTokenWithStatus `json:"tokensWithStatus"`
 }
 
+// SecurityOriginDetails additional information about the frame document's
+// security origin.
+//
+// See: https://chromedevtools.github.io/devtools-protocol/tot/Page#type-SecurityOriginDetails
+type SecurityOriginDetails struct {
+	IsLocalhost bool `json:"isLocalhost"` // Indicates whether the frame document's security origin is one of the local hostnames (e.g. "localhost") or IP addresses (IPv4 127.0.0.0/8 or IPv6 ::1).
+}
+
 // Frame information about the Frame on the page.
 //
 // See: https://chromedevtools.github.io/devtools-protocol/tot/Page#type-Frame
 type Frame struct {
-	ID                             FrameID                        `json:"id"`                             // Frame unique identifier.
-	ParentID                       FrameID                        `json:"parentId,omitempty"`             // Parent frame identifier.
-	LoaderID                       LoaderID                       `json:"loaderId"`                       // Identifier of the loader associated with this frame.
-	Name                           string                         `json:"name,omitempty"`                 // Frame's name as specified in the tag.
-	URL                            string                         `json:"url"`                            // Frame document's URL without fragment.
-	URLFragment                    string                         `json:"urlFragment,omitempty"`          // Frame document's URL fragment including the '#'.
-	DomainAndRegistry              string                         `json:"domainAndRegistry"`              // Frame document's registered domain, taking the public suffixes list into account. Extracted from the Frame's url. Example URLs: http://www.google.com/file.html -> "google.com" http://a.b.co.uk/file.html      -> "b.co.uk"
-	SecurityOrigin                 string                         `json:"securityOrigin"`                 // Frame document's security origin.
-	MimeType                       string                         `json:"mimeType"`                       // Frame document's mimeType as determined by the browser.
-	UnreachableURL                 string                         `json:"unreachableUrl,omitempty"`       // If the frame failed to load, this contains the URL that could not be loaded. Note that unlike url above, this URL may contain a fragment.
-	AdFrameStatus                  *AdFrameStatus                 `json:"adFrameStatus,omitempty"`        // Indicates whether this frame was tagged as an ad and why.
-	SecureContextType              SecureContextType              `json:"secureContextType"`              // Indicates whether the main document is a secure context and explains why that is the case.
-	CrossOriginIsolatedContextType CrossOriginIsolatedContextType `json:"crossOriginIsolatedContextType"` // Indicates whether this is a cross origin isolated context.
-	GatedAPIFeatures               []GatedAPIFeatures             `json:"gatedAPIFeatures"`               // Indicated which gated APIs / features are available.
-	State                          FrameState                     `json:"-"`                              // Frame state.
-	Root                           *Node                          `json:"-"`                              // Frame document root.
-	Nodes                          map[NodeID]*Node               `json:"-"`                              // Frame nodes.
+	ID                             FrameID                        `json:"id"`                                       // Frame unique identifier.
+	ParentID                       FrameID                        `json:"parentId,omitempty,omitzero"`              // Parent frame identifier.
+	LoaderID                       LoaderID                       `json:"loaderId"`                                 // Identifier of the loader associated with this frame.
+	Name                           string                         `json:"name,omitempty,omitzero"`                  // Frame's name as specified in the tag.
+	URL                            string                         `json:"url"`                                      // Frame document's URL without fragment.
+	URLFragment                    string                         `json:"urlFragment,omitempty,omitzero"`           // Frame document's URL fragment including the '#'.
+	DomainAndRegistry              string                         `json:"domainAndRegistry"`                        // Frame document's registered domain, taking the public suffixes list into account. Extracted from the Frame's url. Example URLs: http://www.google.com/file.html -> "google.com" http://a.b.co.uk/file.html      -> "b.co.uk"
+	SecurityOrigin                 string                         `json:"securityOrigin"`                           // Frame document's security origin.
+	SecurityOriginDetails          *SecurityOriginDetails         `json:"securityOriginDetails,omitempty,omitzero"` // Additional details about the frame document's security origin.
+	MimeType                       string                         `json:"mimeType"`                                 // Frame document's mimeType as determined by the browser.
+	UnreachableURL                 string                         `json:"unreachableUrl,omitempty,omitzero"`        // If the frame failed to load, this contains the URL that could not be loaded. Note that unlike url above, this URL may contain a fragment.
+	AdFrameStatus                  *AdFrameStatus                 `json:"adFrameStatus,omitempty,omitzero"`         // Indicates whether this frame was tagged as an ad and why.
+	SecureContextType              SecureContextType              `json:"secureContextType"`                        // Indicates whether the main document is a secure context and explains why that is the case.
+	CrossOriginIsolatedContextType CrossOriginIsolatedContextType `json:"crossOriginIsolatedContextType"`           // Indicates whether this is a cross origin isolated context.
+	GatedAPIFeatures               []GatedAPIFeatures             `json:"gatedAPIFeatures"`                         // Indicated which gated APIs / features are available.
+	State                          FrameState                     `json:"-"`                                        // Frame state.
+	Root                           *Node                          `json:"-"`                                        // Frame document root.
+	Nodes                          map[NodeID]*Node               `json:"-"`                                        // Frame nodes.
 	sync.RWMutex                   `json:"-"`                     // Read write mutex.
 }
 
@@ -1465,3 +1348,23 @@ func (fs FrameState) String() string {
 
 // EmptyFrameID is the "non-existent" frame id.
 const EmptyFrameID = FrameID("")
+
+// ScriptID unique script identifier.
+//
+// See: https://chromedevtools.github.io/devtools-protocol/tot/Runtime#type-ScriptId
+type ScriptID string
+
+// String returns the ScriptID as string value.
+func (t ScriptID) String() string {
+	return string(t)
+}
+
+// UniqueDebuggerID unique identifier of current debugger.
+//
+// See: https://chromedevtools.github.io/devtools-protocol/tot/Runtime#type-UniqueDebuggerId
+type UniqueDebuggerID string
+
+// String returns the UniqueDebuggerID as string value.
+func (t UniqueDebuggerID) String() string {
+	return string(t)
+}

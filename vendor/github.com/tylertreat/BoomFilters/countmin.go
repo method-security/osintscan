@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"hash"
-	"hash/fnv"
 	"io"
 	"math"
 )
@@ -60,7 +59,6 @@ func NewCountMinSketch(epsilon, delta float64) *CountMinSketch {
 		depth:   depth,
 		epsilon: epsilon,
 		delta:   delta,
-		hash:    fnv.New64(),
 	}
 }
 
@@ -82,14 +80,20 @@ func (c *CountMinSketch) TotalCount() uint64 {
 // Add will add the data to the set. Returns the CountMinSketch to allow for
 // chaining.
 func (c *CountMinSketch) Add(data []byte) *CountMinSketch {
+	return c.AddN(data, 1)
+}
+
+// AddN will add the data to the set n times. Returns the CountMinSketch to allow for
+// chaining.
+func (c *CountMinSketch) AddN(data []byte, n uint64) *CountMinSketch {
 	lower, upper := hashKernel(data, c.hash)
 
-	// Increment count in each row.
+	// Increment count in each row by n.
 	for i := uint(0); i < c.depth; i++ {
-		c.matrix[i][(uint(lower)+uint(upper)*i)%c.width]++
+		c.matrix[i][(uint(lower)+uint(upper)*i)%c.width] += n
 	}
 
-	c.count++
+	c.count += n
 	return c
 }
 

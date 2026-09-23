@@ -8,14 +8,90 @@ type Asset interface {
 type AssetType string
 
 const (
-	IPAddress AssetType = "IPAddress"
-	Netblock  AssetType = "Netblock"
-	ASN       AssetType = "ASN"
-	RIROrg    AssetType = "RIROrg"
-	FQDN      AssetType = "FQDN"
+	IPAddress      AssetType = "IPAddress"
+	Netblock       AssetType = "Netblock"
+	ASN            AssetType = "ASN"
+	RIROrg         AssetType = "RIROrg"
+	FQDN           AssetType = "FQDN"
+	WHOIS          AssetType = "WHOIS"
+	Location       AssetType = "Location"
+	Phone          AssetType = "Phone"
+	EmailAddress   AssetType = "EmailAddress"
+	Person         AssetType = "Person"
+	Organization   AssetType = "Organization"
+	Registrar      AssetType = "Registrar"
+	Registrant     AssetType = "Registrant"
+	Port           AssetType = "Port"
+	URL            AssetType = "URL"
+	Fingerprint    AssetType = "Fingerprint"
+	TLSCertificate AssetType = "TLSCertificate"
 )
 
-var ipRels = map[string][]AssetType{}
+var AssetList = []AssetType{
+	IPAddress, Netblock, ASN, RIROrg, FQDN, WHOIS, Location,
+	Phone, EmailAddress, Person, Organization, Registrar, Registrant,
+	Port, URL, Fingerprint, TLSCertificate,
+}
+
+var locationRels = map[string][]AssetType{}
+
+var phoneRels = map[string][]AssetType{}
+
+var emailRels = map[string][]AssetType{}
+
+var whoisRels = map[string][]AssetType{
+	"published_by": {Registrar},
+	"name_server":  {FQDN},
+	"reseller":     {Organization},
+
+	"admin_org":      {Organization},
+	"admin_person":   {Person},
+	"admin_phone":    {Phone},
+	"admin_email":    {EmailAddress},
+	"admin_location": {Location},
+
+	"tech_org":      {Organization},
+	"tech_person":   {Person},
+	"tech_phone":    {Phone},
+	"tech_email":    {EmailAddress},
+	"tech_location": {Location},
+
+	"billing_org":      {Organization},
+	"billing_person":   {Person},
+	"billing_phone":    {Phone},
+	"billing_email":    {EmailAddress},
+	"billing_location": {Location},
+
+	"registrant_org":      {Organization},
+	"registrant_person":   {Person},
+	"registrant_phone":    {Phone},
+	"registrant_email":    {EmailAddress},
+	"registrant_location": {Location},
+}
+
+var personRels = map[string][]AssetType{
+	"phone_number": {Phone},
+	"email":        {EmailAddress},
+	"location":     {Location},
+}
+
+var orgRels = map[string][]AssetType{
+	"rir_org":      {RIROrg},
+	"location":     {Location},
+	"phone_number": {Phone},
+	"email":        {EmailAddress},
+	"operates":     {Registrar},
+}
+
+var registrarRels = map[string][]AssetType{
+	"abuse_email":  {EmailAddress},
+	"abuse_phone":  {Phone},
+	"whois_server": {FQDN},
+}
+
+var ipRels = map[string][]AssetType{
+	"port": {Port},
+}
 
 var netblockRels = map[string][]AssetType{
 	"contains": {IPAddress},
@@ -37,7 +113,34 @@ var fqdnRels = map[string][]AssetType{
 	"mx_record":    {FQDN},
 	"srv_record":   {FQDN, IPAddress},
 	"node":         {FQDN},
+	"registration": {WHOIS},
 }
+
+var tlscertRels = map[string][]AssetType{
+	"common_name":               {FQDN},
+	"subject_organization":      {Organization},
+	"subject_organization_unit": {Organization},
+	"subject_state_or_province": {Location},
+	"subject_locality":          {Location},
+	"subject_email":             {EmailAddress},
+	"issuer":                    {FQDN},
+	"issuer_organization":       {Organization},
+	"issuer_organization_unit":  {Organization},
+	"subject_alt_names":         {FQDN},
+	"issuer_urls":               {URL},
+	"ocsp_server":               {URL},
+	"jarm":                      {Fingerprint},
+}
+
+var portRels = map[string][]AssetType{}
+
+var urlRels = map[string][]AssetType{
+	"port":       {Port},
+	"domain":     {FQDN},
+	"ip_address": {IPAddress},
+}
+
+var fingerprintRels = map[string][]AssetType{}
 
 // ValidRelationship returns true if the relation is valid in the taxonomy
 // when outgoing from the source asset type to the destination asset type.
@@ -55,6 +158,28 @@ func ValidRelationship(source AssetType, relation string, destination AssetType)
 		relations = rirOrgRels
 	case FQDN:
 		relations = fqdnRels
+	case WHOIS:
+		relations = whoisRels
+	case Location:
+		relations = locationRels
+	case Phone:
+		relations = phoneRels
+	case EmailAddress:
+		relations = emailRels
+	case Person:
+		relations = personRels
+	case Organization:
+		relations = orgRels
+	case Registrar:
+		relations = registrarRels
+	case TLSCertificate:
+		relations = tlscertRels
+	case Port:
+		relations = portRels
+	case URL:
+		relations = urlRels
+	case Fingerprint:
+		relations = fingerprintRels
 	default:
 		return false
 	}
