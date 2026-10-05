@@ -241,30 +241,36 @@ func (t *Table[V]) Aggregate() {
 		return
 	}
 
-	slices.SortFunc(*t, func(a, b TableItem[V]) int {
-		return cmpPrefix(a.Pfx, b.Pfx)
-	})
+	tableItemsSort := func(a, b TableItem[V]) int { return cmpPrefix(a.Pfx, b.Pfx) }
+
+	if !slices.IsSortedFunc(*t, tableItemsSort) {
+		slices.SortFunc(*t, tableItemsSort)
+	}
+
+	buf := make([]TableItem[V], 0, len(*t))
 
 	// Iteratively merge entries until no further aggregation is possible
 	for {
 		loop := false
-		var result Table[V]
+
+		// reset buffer
+		buf = buf[:0]
 
 		for i := range len(*t) {
 			thisItem := (*t)[i]
 
 			// first result item
-			if len(result) == 0 {
-				result = append(result, thisItem)
+			if len(buf) == 0 {
+				buf = append(buf, thisItem)
 				continue
 			}
 
-			lastIdx := len(result) - 1
-			lastItem := &result[lastIdx]
+			lastIdx := len(buf) - 1
+			lastItem := &buf[lastIdx]
 
 			// Only aggregate prefixes belonging to the same IP family
 			if lastItem.Pfx.Addr().Is4() != thisItem.Pfx.Addr().Is4() {
-				result = append(result, thisItem)
+				buf = append(buf, thisItem)
 				continue
 			}
 
@@ -280,7 +286,7 @@ func (t *Table[V]) Aggregate() {
 			// Rule 2: Adjacency (merging sibling prefixes)
 			// Equal prefix length + both share a common super prefix of length (bits - 1)
 			if lastItem.Pfx.Bits() == thisItem.Pfx.Bits() && lastItem.Pfx.Bits() > 0 {
-				super, err := lastItem.Pfx.Masked().Addr().Prefix(lastItem.Pfx.Bits() - 1)
+				super, err := lastItem.Pfx.Addr().Prefix(lastItem.Pfx.Bits() - 1)
 				if err == nil && super.Contains(thisItem.Pfx.Addr()) {
 					// Merge into parent block
 					lastItem.Pfx = super
@@ -289,11 +295,13 @@ func (t *Table[V]) Aggregate() {
 				}
 			}
 
-			result = append(result, thisItem)
+			buf = append(buf, thisItem)
 		}
 
-		*t = result
+		*t = buf
+
 		if !loop {
+			clear(buf[len(buf):cap(buf)])
 			break
 		}
 	}
