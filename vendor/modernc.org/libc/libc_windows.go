@@ -7,8 +7,8 @@ package libc // import "modernc.org/libc"
 import (
 	"errors"
 	"fmt"
-	"golang.org/x/sys/windows"
 	"math"
+	mbits "math/bits"
 	"os"
 	"os/exec"
 	"os/user"
@@ -23,6 +23,7 @@ import (
 	"unsafe"
 
 	"github.com/ncruces/go-strftime"
+	"golang.org/x/sys/windows"
 	"modernc.org/libc/errno"
 	"modernc.org/libc/fcntl"
 	"modernc.org/libc/limits"
@@ -41,6 +42,8 @@ var X_imp___wenviron = uintptr(unsafe.Pointer(&wenviron))
 var X_iob [stdio.X_IOB_ENTRIES]stdio.FILE
 var Xin6addr_any [16]byte
 var Xtimezone long // extern long timezone;
+
+type Tsize_t = types.Size_t
 
 var (
 	iobMap     = map[uintptr]int32{} // &_iob[fd] -> fd
@@ -95,6 +98,7 @@ var (
 	procDeleteCriticalSection      = modkernel32.NewProc("DeleteCriticalSection")
 	procDeviceIoControl            = modkernel32.NewProc("DeviceIoControl")
 	procDuplicateHandle            = modkernel32.NewProc("DuplicateHandle")
+	procOutputDebugStringW         = modkernel32.NewProc("OutputDebugStringW")
 	procEnterCriticalSection       = modkernel32.NewProc("EnterCriticalSection")
 	procFindClose                  = modkernel32.NewProc("FindClose")
 	procFindFirstFileExW           = modkernel32.NewProc("FindFirstFileExW")
@@ -125,6 +129,7 @@ var (
 	procGetModuleFileNameW         = modkernel32.NewProc("GetModuleFileNameW")
 	procGetModuleHandleA           = modkernel32.NewProc("GetModuleHandleA")
 	procGetModuleHandleW           = modkernel32.NewProc("GetModuleHandleW")
+	procGetNativeSystemInfo        = modkernel32.NewProc("GetNativeSystemInfo")
 	procGetPrivateProfileStringA   = modkernel32.NewProc("GetPrivateProfileStringA")
 	procGetProcAddress             = modkernel32.NewProc("GetProcAddress")
 	procGetProcessHeap             = modkernel32.NewProc("GetProcessHeap")
@@ -241,10 +246,20 @@ var (
 	procWcsncpy  = modcrt.NewProc("wcsncpy")
 	procWcsrchr  = modcrt.NewProc("wcsrchr")
 
-	moducrt         = windows.NewLazySystemDLL("ucrtbase.dll")
-	procFindfirst32 = moducrt.NewProc("_findfirst32")
-	procFindnext32  = moducrt.NewProc("_findnext32")
-	procStat64i32   = moducrt.NewProc("_stat64i32")
+	moducrt             = windows.NewLazySystemDLL("ucrtbase.dll")
+	procFindfirst32     = moducrt.NewProc("_findfirst32")
+	procFindnext32      = moducrt.NewProc("_findnext32")
+	procStat32i64       = moducrt.NewProc("_stat32i64")
+	procStat64i32       = moducrt.NewProc("_stat64i32")
+	procWchmod          = moducrt.NewProc("_wchmod")
+	procWfindfirst32    = moducrt.NewProc("_wfindfirst32")
+	procWfindfirst64i32 = moducrt.NewProc("_wfindfirst64i32")
+	procWfindnext32     = moducrt.NewProc("_wfindnext32")
+	procWfindnext64i32  = moducrt.NewProc("_wfindnext64i32")
+	procWfullpath       = moducrt.NewProc("_wfullpath")
+	procWmkdir          = moducrt.NewProc("_wmkdir")
+	procWstat32         = moducrt.NewProc("_wstat32")
+	procWstat64i32      = moducrt.NewProc("_wstat64i32")
 )
 
 var (
@@ -273,12 +288,14 @@ var w_fd_to_file = map[int32]*file{}
 type file struct {
 	_fd    int32
 	hadErr bool
+	eof    bool  // set by a read that returned nothing, feof reports it
+	unget  int32 // the character pushed back by ungetc, -1 if none
 	t      uintptr
 	windows.Handle
 }
 
 func addFile(hdl windows.Handle, fd int32) uintptr {
-	var f = file{_fd: fd, Handle: hdl}
+	var f = file{_fd: fd, Handle: hdl, unget: -1}
 	w_fdLock.Lock()
 	defer w_fdLock.Unlock()
 	w_fd_to_file[fd] = &f
@@ -528,8 +545,8 @@ func X_wopen(t *TLS, pathname uintptr, flags int32, args uintptr) int32 {
 	if args != 0 {
 		mode = *(*types.Mode_t)(unsafe.Pointer(args))
 	}
-	s := goWideString(pathname)
-	h, err := windows.Open(GoString(pathname), int(flags), uint32(mode))
+	s := goWideStringNZ(pathname)
+	h, err := windows.Open(s, int(flags), uint32(mode))
 	if err != nil {
 		if dmesgs {
 			dmesg("%v: %q %#x: %v", origin(1), s, flags, err)
@@ -845,25 +862,49 @@ func Xmunmap(t *TLS, addr uintptr, length types.Size_t) int32 {
 	// return 0
 }
 
+type Timeval = struct {
+	Ftv_sec  int32
+	Ftv_usec int32
+}
+
 // int gettimeofday(struct timeval *tv, struct timezone *tz);
 func Xgettimeofday(t *TLS, tv, tz uintptr) int32 {
 	if __ccgo_strace {
 		trc("t=%v tz=%v, (%v:)", t, tz, origin(2))
 	}
-	panic(todo(""))
-	// if tz != 0 {
-	// 	panic(todo(""))
-	// }
+	if tv == 0 {
+		return 0
+	}
 
-	// var tvs unix.Timeval
-	// err := unix.Gettimeofday(&tvs)
-	// if err != nil {
-	// 	t.setErrno(err)
-	// 	return -1
-	// }
-
-	// *(*unix.Timeval)(unsafe.Pointer(tv)) = tvs
+	// This seems to work as well
+	// var u64 uint64
+	// procGetSystemTimeAsFileTime.Call(uintptr(unsafe.Pointer(&u64)), 0, 0)
+	// u64 /= 10
+	// u64 -= 11644473600000000
+	// (*Timeval)(unsafe.Pointer(tv)).Ftv_sec = int32(u64/1e6)
+	// (*Timeval)(unsafe.Pointer(tv)).Ftv_usec = int32(u64%1e6)
 	// return 0
+
+	// But let's use the golang.org/x/sys version
+	windows.Gettimeofday((*windows.Timeval)(unsafe.Pointer(tv)))
+	return 0
+}
+
+type Timespec = struct {
+	Ftv_sec  time.Time_t
+	Ftv_nsec int32
+}
+
+// int clock_gettime(clockid_t clk_id, struct timespec *tp);
+func Xclock_gettime(t *TLS, clk_id int32, tp uintptr) int32 {
+	if __ccgo_strace {
+		trc("t=%v clk_id=%v tp=%v, (%v:)", t, clk_id, tp, origin(2))
+	}
+	var u64 uint64 // [100ns]
+	procGetSystemTimeAsFileTime.Call(uintptr(unsafe.Pointer(&u64)), 0, 0)
+	(*Timespec)(unsafe.Pointer(tp)).Ftv_sec = time.Time_t((u64/10 - 11644473600000000) / 1e6)
+	(*Timespec)(unsafe.Pointer(tp)).Ftv_nsec = int32((u64 * 100) % 1e9)
+	return 0
 }
 
 // int getsockopt(int sockfd, int level, int optname, void *optval, socklen_t *optlen);
@@ -1646,11 +1687,15 @@ func Xdlsym(t *TLS, handle, symbol uintptr) uintptr {
 }
 
 // void perror(const char *s);
-func Xperror(t *TLS, s uintptr) {
+func Xperror(tls *TLS, msg uintptr) {
 	if __ccgo_strace {
-		trc("t=%v s=%v, (%v:)", t, s, origin(2))
+		trc("tls=%v msg=%v, (%v:)", tls, msg, origin(2))
 	}
-	panic(todo(""))
+	if msg != 0 && *(*int8)(unsafe.Pointer(msg)) != 0 {
+		fmt.Fprintf(os.Stderr, "%s: ", GoString(msg))
+	}
+	errstr := Xstrerror(tls, *(*int32)(unsafe.Pointer(X__errno_location(tls))))
+	fmt.Fprintf(os.Stderr, "%s\n", GoString(errstr))
 }
 
 // int pclose(FILE *stream);
@@ -1723,8 +1768,26 @@ func Xsetlocale(t *TLS, category int32, locale uintptr) uintptr {
 	if __ccgo_strace {
 		trc("t=%v category=%v locale=%v, (%v:)", t, category, locale, origin(2))
 	}
-	return 0 //TODO
+	// Only the "C" locale exists. A query, "" or "C" report it, anything else
+	// is not supported.
+	if locale != 0 {
+		switch GoString(locale) {
+		case "", "C", "POSIX":
+		default:
+			return 0
+		}
+	}
+	setlocaleOnce.Do(func() {
+		setlocaleBuf = Xmalloc(t, 2)
+		*(*[2]byte)(unsafe.Pointer(setlocaleBuf)) = [2]byte{'C', 0}
+	})
+	return setlocaleBuf
 }
+
+var (
+	setlocaleOnce sync.Once
+	setlocaleBuf  uintptr
+)
 
 // // char *nl_langinfo(nl_item item);
 // func Xnl_langinfo(t *TLS, item langinfo.Nl_item) uintptr {
@@ -1768,14 +1831,6 @@ func Xrealpath(t *TLS, path, resolved_path uintptr) uintptr {
 	copy((*RawMem)(unsafe.Pointer(resolved_path))[:len(s):len(s)], s)
 	(*RawMem)(unsafe.Pointer(resolved_path))[len(s)] = 0
 	return resolved_path
-}
-
-// struct tm *gmtime_r(const time_t *timep, struct tm *result);
-func Xgmtime_r(t *TLS, timep, result uintptr) uintptr {
-	if __ccgo_strace {
-		trc("t=%v result=%v, (%v:)", t, result, origin(2))
-	}
-	panic(todo(""))
 }
 
 // // char *inet_ntoa(struct in_addr in);
@@ -1832,6 +1887,9 @@ func Xfread(t *TLS, ptr uintptr, size, nmemb types.Size_t, stream uintptr) types
 	if __ccgo_strace {
 		trc("t=%v ptr=%v nmemb=%v stream=%v, (%v:)", t, ptr, nmemb, stream, origin(2))
 	}
+	if size == 0 || nmemb == 0 {
+		return 0
+	}
 	f, ok := winGetObject(stream).(*file)
 	if !ok {
 		t.setErrno(errno.EBADF)
@@ -1840,19 +1898,31 @@ func Xfread(t *TLS, ptr uintptr, size, nmemb types.Size_t, stream uintptr) types
 
 	var sz = size * nmemb
 	var obuf = ((*RawMem)(unsafe.Pointer(ptr)))[:sz]
-	n, err := windows.Read(f.Handle, obuf)
-	if err != nil {
-		f.setErr()
-		return 0
+	var n int
+	if c := f.unget; c >= 0 {
+		f.unget = -1
+		obuf[0] = byte(c)
+		n = 1
+		obuf = obuf[1:]
+	}
+	if len(obuf) != 0 {
+		m, err := windows.Read(f.Handle, obuf)
+		if err != nil {
+			f.setErr()
+			return 0
+		}
+
+		n += m
+	}
+	if types.Size_t(n) < sz {
+		f.eof = true
 	}
 
 	if dmesgs {
-		// dmesg("%v: %d %#x x %#x: %#x\n%s", origin(1), file(stream).fd(), size, nmemb, types.Size_t(m)/size, hex.Dump(GoBytes(ptr, int(m))))
-		dmesg("%v: %d %#x x %#x: %#x\n%s", origin(1), f._fd, size, nmemb, types.Size_t(n)/size)
+		dmesg("%v: %d %#x x %#x: %#x", origin(1), f._fd, size, nmemb, types.Size_t(n)/size)
 	}
 
 	return types.Size_t(n) / size
-
 }
 
 // size_t fwrite(const void *ptr, size_t size, size_t nmemb, FILE *stream);
@@ -1860,7 +1930,7 @@ func Xfwrite(t *TLS, ptr uintptr, size, nmemb types.Size_t, stream uintptr) type
 	if __ccgo_strace {
 		trc("t=%v ptr=%v nmemb=%v stream=%v, (%v:)", t, ptr, nmemb, stream, origin(2))
 	}
-	if ptr == 0 || size == 0 {
+	if ptr == 0 || size == 0 || nmemb == 0 {
 		return 0
 	}
 
@@ -1880,7 +1950,7 @@ func Xfwrite(t *TLS, ptr uintptr, size, nmemb types.Size_t, stream uintptr) type
 
 	if dmesgs {
 		// 		// dmesg("%v: %d %#x x %#x: %#x\n%s", origin(1), file(stream).fd(), size, nmemb, types.Size_t(m)/size, hex.Dump(GoBytes(ptr, int(m))))
-		dmesg("%v: %d %#x x %#x: %#x\n%s", origin(1), f._fd, size, nmemb, types.Size_t(n)/size)
+		dmesg("%v: %d %#x x %#x: %#x", origin(1), f._fd, size, nmemb, types.Size_t(n)/size)
 	}
 	return types.Size_t(n) / size
 }
@@ -1924,6 +1994,8 @@ func Xfseek(t *TLS, stream uintptr, offset long, whence int32) int32 {
 		t.setErrno(errno.EBADF)
 		return -1
 	}
+	f.eof = false
+	f.unget = -1
 	if n := Xlseek(t, f._fd, types.Off_t(offset), whence); n < 0 {
 		if dmesgs {
 			dmesg("%v: fd %v, off %#x, whence %v: %v", origin(1), f._fd, offset, whenceStr(whence), n)
@@ -1986,11 +2058,17 @@ func Xfgetc(t *TLS, stream uintptr) int32 {
 		return stdio.EOF
 	}
 
+	if c := f.unget; c >= 0 {
+		f.unget = -1
+		return c
+	}
+
 	var buf [1]byte
 	if n, _ := windows.Read(f.Handle, buf[:]); n != 0 {
 		return int32(buf[0])
 	}
 
+	f.eof = true
 	return stdio.EOF
 }
 
@@ -1999,7 +2077,39 @@ func Xungetc(t *TLS, c int32, stream uintptr) int32 {
 	if __ccgo_strace {
 		trc("t=%v c=%v stream=%v, (%v:)", t, c, stream, origin(2))
 	}
-	panic(todo(""))
+	f, ok := winGetObject(stream).(*file)
+	if !ok || c == stdio.EOF || f.unget >= 0 {
+		return stdio.EOF
+	}
+
+	f.unget = int32(byte(c))
+	f.eof = false
+	return int32(byte(c))
+}
+
+// int feof(FILE *stream);
+func Xfeof(t *TLS, stream uintptr) int32 {
+	if __ccgo_strace {
+		trc("t=%v stream=%v, (%v:)", t, stream, origin(2))
+	}
+	f, ok := winGetObject(stream).(*file)
+	if !ok {
+		t.setErrno(errno.EBADF)
+		return 0
+	}
+
+	return Bool32(f.eof)
+}
+
+// void clearerr(FILE *stream);
+func Xclearerr(t *TLS, stream uintptr) {
+	if __ccgo_strace {
+		trc("t=%v stream=%v, (%v:)", t, stream, origin(2))
+	}
+	if f, ok := winGetObject(stream).(*file); ok {
+		f.hadErr = false
+		f.eof = false
+	}
 }
 
 // int fscanf(FILE *stream, const char *format, ...);
@@ -2416,10 +2526,11 @@ func XCloseHandle(t *TLS, hObject uintptr) int32 {
 	if __ccgo_strace {
 		trc("t=%v hObject=%v, (%v:)", t, hObject, origin(2))
 	}
-	r := windows.CloseHandle(windows.Handle(hObject))
-	if r != nil {
-		return errno.EINVAL
+	if err := windows.CloseHandle(windows.Handle(hObject)); err != nil {
+		t.setErrno(err)
+		return 0
 	}
+
 	return 1
 }
 
@@ -3014,8 +3125,16 @@ func XLeaveCriticalSection(t *TLS, lpCriticalSection uintptr) {
 	procLeaveCriticalSection.Call(lpCriticalSection, 0, 0)
 }
 
-func XGetOverlappedResult(t *TLS, _ ...interface{}) int32 {
-	panic(todo(""))
+func XGetOverlappedResult(t *TLS, hFile, lpOverlapped, lpNumberOfBytesTransferred uintptr, bWait int32) int32 {
+	if __ccgo_strace {
+		trc("t=%v hFile=%v lpOverlapped=%v lpNumberOfBytesTransferred=%v bWait=%v, (%v:)", t, hFile, lpOverlapped, lpNumberOfBytesTransferred, bWait, origin(2))
+	}
+	if err := windows.GetOverlappedResult(windows.Handle(hFile), (*windows.Overlapped)(unsafe.Pointer(lpOverlapped)), (*uint32)(unsafe.Pointer(lpNumberOfBytesTransferred)), bWait != 0); err != nil {
+		t.setErrno(err)
+		return 0
+	}
+
+	return 1
 }
 
 func XSetupComm(t *TLS, _ ...interface{}) int32 {
@@ -3451,7 +3570,7 @@ func XOutputDebugStringW(t *TLS, lpOutputString uintptr) {
 	if __ccgo_strace {
 		trc("t=%v lpOutputString=%v, (%v:)", t, lpOutputString, origin(2))
 	}
-	panic(todo(""))
+	procOutputDebugStringW.Call(lpOutputString)
 }
 
 func XMessageBeep(t *TLS, _ ...interface{}) int32 {
@@ -3799,6 +3918,18 @@ func XRtlGetVersion(t *TLS, lpVersionInformation uintptr) uintptr {
 		trc("t=%v lpVersionInformation=%v, (%v:)", t, lpVersionInformation, origin(2))
 	}
 	panic(todo(""))
+}
+
+// void GetNativeSystemInfo(
+//
+//	LPSYSTEM_INFO lpSystemInfo
+//
+// );
+func XGetNativeSystemInfo(t *TLS, lpSystemInfo uintptr) {
+	if __ccgo_strace {
+		trc("t=%v lpSystemInfo=%v, (%v:)", t, lpSystemInfo, origin(2))
+	}
+	procGetNativeSystemInfo.Call(lpSystemInfo, 0, 0)
 }
 
 // void GetSystemInfo(
@@ -5046,18 +5177,17 @@ func Xwcschr(t *TLS, str uintptr, c wchar_t) uintptr {
 	if __ccgo_strace {
 		trc("t=%v str=%v c=%v, (%v:)", t, str, c, origin(2))
 	}
-	var source = str
 	for {
-		var buf = *(*uint16)(unsafe.Pointer(source))
-		if buf == 0 {
+		w := *(*uint16)(unsafe.Pointer(str))
+		if w == c {
+			return str
+		}
+
+		if w == 0 {
 			return 0
 		}
-		if buf == c {
-			return source
-		}
-		// wchar_t = 2 bytes
-		source++
-		source++
+
+		str += 2
 	}
 }
 
@@ -5669,8 +5799,16 @@ func XIN6_IS_ADDR_V4MAPPED(t *TLS, _ ...interface{}) int32 {
 	panic(todo(""))
 }
 
-func XSetHandleInformation(t *TLS, _ ...interface{}) int32 {
-	panic(todo(""))
+func XSetHandleInformation(t *TLS, hObject uintptr, dwMask, dwFlags uint32) int32 {
+	if __ccgo_strace {
+		trc("t=%v hObject=%v dwMask=%v dwFlags=%v, (%v:)", t, hObject, dwMask, dwFlags, origin(2))
+	}
+	if err := windows.SetHandleInformation(windows.Handle(hObject), dwMask, dwFlags); err != nil {
+		t.setErrno(err)
+		return 0
+	}
+
+	return 1
 }
 
 func Xioctlsocket(t *TLS, _ ...interface{}) int32 {
@@ -6005,7 +6143,10 @@ func Xputchar(t *TLS, c int32) int32 {
 	if __ccgo_strace {
 		trc("t=%v c=%v, (%v:)", t, c, origin(2))
 	}
-	panic(todo(""))
+	if _, err := fwrite(unistd.STDOUT_FILENO, []byte{byte(c)}); err != nil {
+		return -1
+	}
+	return int32(byte(c))
 }
 
 // void _assert(
@@ -7108,22 +7249,49 @@ func Xsscanf(t *TLS, str, format, va uintptr) int32 {
 	return r
 }
 
+var _toint4 = Float64FromInt32(1) / Float64FromFloat64(2.220446049250313e-16)
+
 func Xrint(tls *TLS, x float64) float64 {
 	if __ccgo_strace {
 		trc("tls=%v x=%v, (%v:)", tls, x, origin(2))
 	}
-	switch {
-	case x == 0: // also +0 and -0
-		return 0
-	case math.IsInf(x, 0), math.IsNaN(x):
-		return x
-	case x >= math.MinInt64 && x <= math.MaxInt64 && float64(int64(x)) == x:
-		return x
-	case x >= 0:
-		return math.Floor(x + 0.5)
-	default:
-		return math.Ceil(x - 0.5)
+	bp := tls.Alloc(16)
+	defer tls.Free(16)
+	var e, s int32
+	var y Tdouble_t
+	var v1 float64
+	var _ /* u at bp+0 */ struct {
+		Fi [0]Tuint64_t
+		Ff float64
 	}
+	_, _, _, _ = e, s, y, v1
+	*(*struct {
+		Fi [0]Tuint64_t
+		Ff float64
+	})(unsafe.Pointer(bp)) = struct {
+		Fi [0]Tuint64_t
+		Ff float64
+	}{}
+	*(*float64)(unsafe.Pointer(bp)) = x
+	e = Int32FromUint64(*(*Tuint64_t)(unsafe.Pointer(bp)) >> int32(52) & uint64(0x7ff))
+	s = Int32FromUint64(*(*Tuint64_t)(unsafe.Pointer(bp)) >> int32(63))
+	if e >= Int32FromInt32(0x3ff)+Int32FromInt32(52) {
+		return x
+	}
+	if s != 0 {
+		y = x - _toint4 + _toint4
+	} else {
+		y = x + _toint4 - _toint4
+	}
+	if y == Float64FromInt32(0) {
+		if s != 0 {
+			v1 = -Float64FromFloat64(0)
+		} else {
+			v1 = Float64FromInt32(0)
+		}
+		return v1
+	}
+	return y
 }
 
 // FILE *fdopen(int fd, const char *mode);
@@ -7304,17 +7472,25 @@ func X_wgetenv(t *TLS, varname uintptr) uintptr {
 	if !wenvValid {
 		bootWinEnviron(t)
 	}
-	k := strings.ToLower(goWideStringNZ(varname))
+	k0 := goWideStringNZ(varname)
+	k := strings.ToLower(k0)
 	for _, v := range winEnviron[:len(winEnviron)-1] {
 		s := strings.ToLower(goWideStringNZ(v))
 		x := strings.IndexByte(s, '=')
-		if s[:x] == k {
-			// trc("%v: %q -> %q", origin(1), goWideStringNZ(varname), goWideStringNZ(v))
-			return v
+		if x >= 0 && s[:x] == k {
+			return v + uintptr(2*(x+1))
 		}
 	}
 
-	// trc("%v: %q -> %q", origin(1), goWideStringNZ(varname), "")
+	// Not seen at startup: the Go side may have set it since.
+	if val, ok := os.LookupEnv(k0); ok {
+		np := allocW(t, k0+"="+val)
+		winEnviron = winEnviron[:len(winEnviron)-1]
+		winEnviron = append(winEnviron, np, 0)
+		wenviron = uintptr(unsafe.Pointer(&winEnviron[0]))
+		return np + uintptr(2*(len([]rune(k0))+1))
+	}
+
 	return 0
 }
 
@@ -7331,13 +7507,22 @@ func X_wputenv(t *TLS, envstring uintptr) int32 {
 		bootWinEnviron(t)
 	}
 	s0 := goWideStringNZ(envstring)
+	x0 := strings.IndexByte(s0, '=')
+	if x0 <= 0 {
+		t.setErrno(errno.EINVAL)
+		return -1
+	}
+
+	// Keep the narrow environment getenv reads and the Go environment in step.
+	putenvNarrow(t, s0)
+	os.Setenv(s0[:x0], s0[x0+1:])
+
 	s := strings.ToLower(s0)
-	x := strings.IndexByte(s, '=')
-	k := s[:x]
+	k := s[:x0]
 	for i, v := range winEnviron[:len(winEnviron)-1] {
 		s2 := strings.ToLower(goWideStringNZ(v))
 		x := strings.IndexByte(s2, '=')
-		if s2[:x] == k {
+		if x >= 0 && s2[:x] == k {
 			Xfree(t, v)
 			winEnviron[i] = allocW(t, s0)
 			return 0
@@ -7353,19 +7538,15 @@ func X_wputenv(t *TLS, envstring uintptr) int32 {
 
 func bootWinEnviron(t *TLS) {
 	winEnviron = winEnviron[:0]
-	p := Environ()
-	for {
-		q := *(*uintptr)(unsafe.Pointer(p))
-		p += unsafe.Sizeof(uintptr(0))
-		if q == 0 {
-			break
-		}
-
-		s := GoString(q)
-		// trc("%v: %q", origin(1), s)
-		r := allocW(t, s)
-		winEnviron = append(winEnviron, r)
+	// Read the process environment, not the narrow copy getenv uses. That one
+	// is taken during package initialization (X__imp__environ) and misses
+	// everything the Go side has set since.
+	for _, s := range os.Environ() {
+		winEnviron = append(winEnviron, allocW(t, s))
 	}
+	// _wenviron is a null terminated array, and _wgetenv/_wputenv rely on the
+	// terminator being the last element.
+	winEnviron = append(winEnviron, 0)
 	wenviron = uintptr(unsafe.Pointer(&winEnviron[0]))
 	wenvValid = true
 }
@@ -7375,6 +7556,14 @@ func Xfabsl(t *TLS, x float64) float64 {
 		trc("t=%v x=%v, (%v:)", t, x, origin(2))
 	}
 	return math.Abs(x)
+}
+
+// double scalbn(double x, int n)
+func Xscalbn(t *TLS, x float64, n int32) float64 {
+	if __ccgo_strace {
+		trc("t=%v x=%v n=%v, (%v:)", t, x, n, origin(2))
+	}
+	return math.Ldexp(x, int(n))
 }
 
 func X__stdio_common_vfprintf(t *TLS, args ...interface{}) int32     { panic("TODO") }
@@ -7455,6 +7644,18 @@ func X_vscprintf(t *TLS, format uintptr, argptr uintptr) int32 {
 }
 
 // int _stat32i64(const char *path, struct _stat32i64 *buffer);
+func X_stat32i64(t *TLS, path uintptr, buffer uintptr) int32 {
+	if __ccgo_strace {
+		trc("t=%v path=%v buffer=%v, (%v:)", t, path, buffer, origin(2))
+	}
+	r0, _, err := procStat32i64.Call(uintptr(path), uintptr(buffer))
+	if err != windows.NOERROR {
+		t.setErrno(err)
+	}
+	return int32(r0)
+}
+
+// int _stat64i32(const char *path, struct _stat64i32 *buffer);
 func X_stat64i32(t *TLS, path uintptr, buffer uintptr) int32 {
 	if __ccgo_strace {
 		trc("t=%v path=%v buffer=%v, (%v:)", t, path, buffer, origin(2))
@@ -7466,20 +7667,144 @@ func X_stat64i32(t *TLS, path uintptr, buffer uintptr) int32 {
 	return int32(r0)
 }
 
+func X__stat32i64(t *TLS, path uintptr, buffer uintptr) int32 {
+	return X_stat32i64(t, path, buffer)
+}
+
+func X__stat64i32(t *TLS, path uintptr, buffer uintptr) int32 {
+	return X_stat64i32(t, path, buffer)
+}
+
 func AtomicLoadNUint8(ptr uintptr, memorder int32) uint8 {
 	return byte(a_load_8(ptr))
 }
 
 // struct tm *gmtime( const time_t *sourceTime );
-func Xgmtime(t *TLS, sourceTime uintptr) uintptr {
+// func Xgmtime(t *TLS, sourceTime uintptr) uintptr {
+// 	if __ccgo_strace {
+// 		trc("t=%v sourceTime=%v, (%v:)", t, sourceTime, origin(2))
+// 	}
+// 	 r0, _, err := procGmtime.Call(uintptr(sourceTime))
+// 	 if err != windows.NOERROR {
+// 	 	t.setErrno(err)
+// 	 }
+// 	 return uintptr(r0)
+// }
+
+var _tm time.Tm
+
+// /tmp/libc/musl-master/src/time/gmtime.c:4:11:
+func Xgmtime(tls *TLS, t uintptr) (r uintptr) { // /tmp/libc/musl-master/src/time/gmtime.c:7:2:
 	if __ccgo_strace {
-		trc("t=%v sourceTime=%v, (%v:)", t, sourceTime, origin(2))
+		trc("tls=%v t=%v, (%v:)", tls, t, origin(2))
+		defer func() { trc("-> %v", r) }()
 	}
-	r0, _, err := procGmtime.Call(uintptr(sourceTime))
-	if err != windows.NOERROR {
-		t.setErrno(err)
+	r = Xgmtime_r(tls, t, uintptr(unsafe.Pointer(&_tm)))
+	return r
+}
+
+var _days_in_month = [12]int8{
+	0:  int8(31),
+	1:  int8(30),
+	2:  int8(31),
+	3:  int8(30),
+	4:  int8(31),
+	5:  int8(31),
+	6:  int8(30),
+	7:  int8(31),
+	8:  int8(30),
+	9:  int8(31),
+	10: int8(31),
+	11: int8(29),
+}
+
+var x___utc = [4]int8{'U', 'T', 'C'}
+
+func Xgmtime_r(tls *TLS, t uintptr, tm uintptr) (r uintptr) {
+	if __ccgo_strace {
+		trc("tls=%v t=%v tm=%v, (%v:)", tls, t, tm, origin(2))
+		defer func() { trc("-> %v", r) }()
 	}
-	return uintptr(r0)
+	if x___secs_to_tm(tls, int64(*(*time.Time_t)(unsafe.Pointer(t))), tm) < 0 {
+		*(*int32)(unsafe.Pointer(X__errno_location(tls))) = int32(errno.EOVERFLOW)
+		return uintptr(0)
+	}
+	(*time.Tm)(unsafe.Pointer(tm)).Ftm_isdst = 0
+	return tm
+}
+
+func x___secs_to_tm(tls *TLS, t int64, tm uintptr) (r int32) {
+	var c_cycles, leap, months, q_cycles, qc_cycles, remdays, remsecs, remyears, wday, yday int32
+	var days, secs, years int64
+	_, _, _, _, _, _, _, _, _, _, _, _, _ = c_cycles, days, leap, months, q_cycles, qc_cycles, remdays, remsecs, remyears, secs, wday, yday, years
+	/* Reject time_t values whose year would overflow int */
+	if t < int64(-Int32FromInt32(1)-Int32FromInt32(0x7fffffff))*Int64FromInt64(31622400) || t > Int64FromInt32(limits.INT_MAX)*Int64FromInt64(31622400) {
+		return -int32(1)
+	}
+	secs = t - (Int64FromInt64(946684800) + int64(Int32FromInt32(86400)*(Int32FromInt32(31)+Int32FromInt32(29))))
+	days = secs / int64(86400)
+	remsecs = int32(secs % int64(86400))
+	if remsecs < 0 {
+		remsecs += int32(86400)
+		days--
+	}
+	wday = int32((int64(3) + days) % int64(7))
+	if wday < 0 {
+		wday += int32(7)
+	}
+	qc_cycles = int32(days / int64(Int32FromInt32(365)*Int32FromInt32(400)+Int32FromInt32(97)))
+	remdays = int32(days % int64(Int32FromInt32(365)*Int32FromInt32(400)+Int32FromInt32(97)))
+	if remdays < 0 {
+		remdays += Int32FromInt32(365)*Int32FromInt32(400) + Int32FromInt32(97)
+		qc_cycles--
+	}
+	c_cycles = remdays / (Int32FromInt32(365)*Int32FromInt32(100) + Int32FromInt32(24))
+	if c_cycles == int32(4) {
+		c_cycles--
+	}
+	remdays -= c_cycles * (Int32FromInt32(365)*Int32FromInt32(100) + Int32FromInt32(24))
+	q_cycles = remdays / (Int32FromInt32(365)*Int32FromInt32(4) + Int32FromInt32(1))
+	if q_cycles == int32(25) {
+		q_cycles--
+	}
+	remdays -= q_cycles * (Int32FromInt32(365)*Int32FromInt32(4) + Int32FromInt32(1))
+	remyears = remdays / int32(365)
+	if remyears == int32(4) {
+		remyears--
+	}
+	remdays -= remyears * int32(365)
+	leap = BoolInt32(!(remyears != 0) && (q_cycles != 0 || !(c_cycles != 0)))
+	yday = remdays + int32(31) + int32(28) + leap
+	if yday >= int32(365)+leap {
+		yday -= int32(365) + leap
+	}
+	years = int64(remyears+int32(4)*q_cycles+int32(100)*c_cycles) + int64(400)*int64(int64(qc_cycles))
+	months = 0
+	for {
+		if !(int32(_days_in_month[months]) <= remdays) {
+			break
+		}
+		remdays -= int32(_days_in_month[months])
+		goto _1
+	_1:
+		months++
+	}
+	if months >= int32(10) {
+		months -= int32(12)
+		years++
+	}
+	if years+int64(100) > int64(limits.INT_MAX) || years+int64(100) < int64(-Int32FromInt32(1)-Int32FromInt32(0x7fffffff)) {
+		return -int32(1)
+	}
+	(*time.Tm)(unsafe.Pointer(tm)).Ftm_year = int32(years + int64(100))
+	(*time.Tm)(unsafe.Pointer(tm)).Ftm_mon = months + int32(2)
+	(*time.Tm)(unsafe.Pointer(tm)).Ftm_mday = remdays + int32(1)
+	(*time.Tm)(unsafe.Pointer(tm)).Ftm_wday = wday
+	(*time.Tm)(unsafe.Pointer(tm)).Ftm_yday = yday
+	(*time.Tm)(unsafe.Pointer(tm)).Ftm_hour = remsecs / int32(3600)
+	(*time.Tm)(unsafe.Pointer(tm)).Ftm_min = remsecs / int32(60) % int32(60)
+	(*time.Tm)(unsafe.Pointer(tm)).Ftm_sec = remsecs % int32(60)
+	return 0
 }
 
 // size_t strftime(
@@ -7523,17 +7848,6 @@ func Xstrftime(tls *TLS, s uintptr, n size_t, f uintptr, tm uintptr) (r size_t) 
 
 func X__mingw_strtod(t *TLS, s uintptr, p uintptr) float64 {
 	return Xstrtod(t, s, p)
-}
-
-func Xstrtod(t *TLS, s uintptr, p uintptr) float64 {
-	if __ccgo_strace {
-		trc("tls=%v s=%v p=%v, (%v:)", t, s, p, origin(2))
-	}
-	r0, _, err := procStrtod.Call(uintptr(s), uintptr(p))
-	if err != windows.NOERROR {
-		t.setErrno(err)
-	}
-	return math.Float64frombits(uint64(r0))
 }
 
 // int vsnprintf(char *str, size_t size, const char *format, va_list ap);
@@ -7608,4 +7922,386 @@ func X_strnicmp(tls *TLS, __Str1 uintptr, __Str2 uintptr, __MaxCount types.Size_
 		tls.setErrno(int32(err.(windows.Errno)))
 	}
 	return int32(r0)
+}
+
+func X__builtin_ctz(t *TLS, n uint32) int32 {
+	return int32(mbits.TrailingZeros32(n))
+}
+
+// intptr_t _wfindfirst64i32(const wchar_t *filespec, struct _wfinddata64i32_t *fileinfo);
+func X_wfindfirst64i32(tls *TLS, filespec, fileinfo uintptr) (r types.Intptr_t) {
+	r0, _, err := procWfindfirst64i32.Call(filespec, fileinfo)
+	if err != windows.NOERROR {
+		tls.setErrno(int32(err.(windows.Errno)))
+	}
+	return types.Intptr_t(r0)
+}
+
+// int _wfindnext64i32(intptr_t handle, struct _wfinddata64i32_t *fileinfo);
+func X_wfindnext64i32(tls *TLS, handle types.Intptr_t, fileinfo uintptr) (r int32) {
+	r0, _, err := procWfindnext64i32.Call(uintptr(handle), fileinfo)
+	if err != windows.NOERROR {
+		tls.setErrno(int32(err.(windows.Errno)))
+	}
+	return int32(r0)
+}
+
+// wchar_t *_wfullpath(
+//
+//	wchar_t *absPath,
+//	const wchar_t *relPath,
+//	size_t maxLength
+//
+// );
+func X_wfullpath(tls *TLS, absPath, relPath uintptr, maxLength Tsize_t) (r uintptr) {
+	r0, _, err := procWfullpath.Call(absPath, relPath, uintptr(maxLength))
+	if err != windows.NOERROR {
+		tls.setErrno(int32(err.(windows.Errno)))
+	}
+	return r0
+}
+
+// int _wchmod( const wchar_t *filename, int pmode );
+func X_wchmod(tls *TLS, filename uintptr, pmode int32) (r int32) {
+	r0, _, err := procWchmod.Call(filename, uintptr(pmode))
+	if err != windows.NOERROR {
+		tls.setErrno(int32(err.(windows.Errno)))
+	}
+	return int32(r0)
+}
+
+// int _wmkdir(const wchar_t *dirname);
+func X_wmkdir(tls *TLS, dirname uintptr) (r int32) {
+	r0, _, err := procWmkdir.Call(dirname)
+	if err != windows.NOERROR {
+		tls.setErrno(int32(err.(windows.Errno)))
+	}
+	return int32(r0)
+}
+
+// int _wstat64i32(const wchar_t *path, struct _stat64i32 *buffer);
+func X_wstat64i32(tls *TLS, path, buffer uintptr) (r int32) {
+	r0, _, err := procWstat64i32.Call(path, buffer)
+	if err != windows.NOERROR {
+		tls.setErrno(int32(err.(windows.Errno)))
+	}
+	return int32(r0)
+}
+
+// intptr_t _wfindfirst32(const wchar_t *filespec, struct _wfinddata32_t *fileinfo);
+func X_wfindfirst32(tls *TLS, filespec, fileinfo uintptr) (r types.Intptr_t) {
+	r0, _, err := procWfindfirst32.Call(filespec, fileinfo)
+	if err != windows.NOERROR {
+		tls.setErrno(int32(err.(windows.Errno)))
+	}
+	return types.Intptr_t(r0)
+}
+
+// int _wfindnext32(intptr_t handle, struct _wfinddata32_t *fileinfo);
+func X_wfindnext32(tls *TLS, handle types.Intptr_t, fileinfo uintptr) (r int32) {
+	r0, _, err := procWfindnext32.Call(uintptr(handle), fileinfo)
+	if err != windows.NOERROR {
+		tls.setErrno(int32(err.(windows.Errno)))
+	}
+	return int32(r0)
+}
+
+// int _wstat32(const wchar_t *path, struct __stat32 *buffer);
+func X_wstat32(tls *TLS, path, buffer uintptr) (r int32) {
+	r0, _, err := procWstat32.Call(path, buffer)
+	if err != windows.NOERROR {
+		tls.setErrno(int32(err.(windows.Errno)))
+	}
+	return int32(r0)
+}
+
+func Xbsearch(tls *TLS, key uintptr, base uintptr, nel Tsize_t, width Tsize_t, cmp uintptr) uintptr {
+	if __ccgo_strace {
+		trc("tls=%v key=%v base=%v nel=%v width=%v cmp=%v, (%v:)", tls, key, base, nel, width, cmp, origin(2))
+	}
+	var try uintptr
+	var sign int32
+	for nel > 0 {
+		try = base + uintptr(width*(nel/2))
+		sign = (*struct {
+			f func(*TLS, uintptr, uintptr) int32
+		})(unsafe.Pointer(&struct{ uintptr }{cmp})).f(tls, key, try)
+		if sign < 0 {
+			nel /= 2
+		} else if sign > 0 {
+			base = try + uintptr(width)
+			nel -= nel/2 + 1
+		} else {
+			return try
+		}
+	}
+	return 0
+}
+
+// The functions below used to be shared TODO stubs in libc.go. They have unix
+// implementations in libc_unix.go now; they stay unimplemented here.
+
+// int kill(pid_t pid, int sig);
+func Xkill(t *TLS, pid types.Pid_t, sig int32) int32 {
+	if __ccgo_strace {
+		trc("t=%v pid=%v sig=%v, (%v:)", t, pid, sig, origin(2))
+	}
+	panic(todo(""))
+}
+
+// ssize_t readv(int fd, const struct iovec *iov, int iovcnt);
+func Xreadv(t *TLS, fd int32, iov uintptr, iovcnt int32) types.Ssize_t {
+	if __ccgo_strace {
+		trc("t=%v fd=%v iov=%v iovcnt=%v, (%v:)", t, fd, iov, iovcnt, origin(2))
+	}
+	panic(todo(""))
+}
+
+// pid_t setsid(void);
+func Xsetsid(t *TLS) types.Pid_t {
+	if __ccgo_strace {
+		trc("t=%v, (%v:)", t, origin(2))
+	}
+	panic(todo(""))
+}
+
+// size_t confstr(int name, char *buf, size_t len);
+func Xconfstr(t *TLS, name int32, buf uintptr, len types.Size_t) types.Size_t {
+	if __ccgo_strace {
+		trc("t=%v name=%v buf=%v len=%v, (%v:)", t, name, buf, len, origin(2))
+	}
+	panic(todo(""))
+}
+
+// char *strncat(char *dest, const char *src, size_t n);
+func Xstrncat(t *TLS, dest, src uintptr, n types.Size_t) (r uintptr) {
+	if __ccgo_strace {
+		trc("t=%v dest=%v src=%v n=%v, (%v:)", t, dest, src, n, origin(2))
+	}
+	r = dest
+	for *(*byte)(unsafe.Pointer(dest)) != 0 {
+		dest++
+	}
+	for ; n != 0; n-- {
+		c := *(*byte)(unsafe.Pointer(src))
+		if c == 0 {
+			break
+		}
+
+		*(*byte)(unsafe.Pointer(dest)) = c
+		dest++
+		src++
+	}
+	*(*byte)(unsafe.Pointer(dest)) = 0
+	return r
+}
+
+// strtoi64 is the common part of strtoll and strtoull. Overflow is reported
+// with ERANGE and the clamped value, as the C functions do.
+func strtoi64(t *TLS, nptr, endptr uintptr, base int32, unsigned bool) uint64 {
+	p := nptr
+	for {
+		switch *(*byte)(unsafe.Pointer(p)) {
+		case ' ', '\t', '\n', '\v', '\f', '\r':
+			p++
+			continue
+		}
+		break
+	}
+	neg := false
+	switch *(*byte)(unsafe.Pointer(p)) {
+	case '-':
+		neg = true
+		p++
+	case '+':
+		p++
+	}
+	if (base == 0 || base == 16) && *(*byte)(unsafe.Pointer(p)) == '0' && (*(*byte)(unsafe.Pointer(p + 1)) == 'x' || *(*byte)(unsafe.Pointer(p + 1)) == 'X') {
+		base = 16
+		p += 2
+	}
+	if base == 0 {
+		base = 10
+		if *(*byte)(unsafe.Pointer(p)) == '0' {
+			base = 8
+		}
+	}
+	if base < 2 || base > 36 {
+		t.setErrno(errno.EINVAL)
+		return 0
+	}
+
+	var v uint64
+	var overflow, any bool
+	for ; ; p++ {
+		c := *(*byte)(unsafe.Pointer(p))
+		var d int32
+		switch {
+		case c >= '0' && c <= '9':
+			d = int32(c - '0')
+		case c >= 'a' && c <= 'z':
+			d = int32(c-'a') + 10
+		case c >= 'A' && c <= 'Z':
+			d = int32(c-'A') + 10
+		default:
+			d = 99
+		}
+		if d >= base {
+			break
+		}
+
+		any = true
+		if !overflow {
+			nv := v*uint64(base) + uint64(d)
+			if nv/uint64(base) != v {
+				overflow = true
+			}
+			v = nv
+		}
+	}
+	if !any {
+		if endptr != 0 {
+			*(*uintptr)(unsafe.Pointer(endptr)) = nptr
+		}
+		return 0
+	}
+
+	if endptr != 0 {
+		*(*uintptr)(unsafe.Pointer(endptr)) = p
+	}
+	switch {
+	case unsigned:
+		if overflow {
+			t.setErrno(errno.ERANGE)
+			return math.MaxUint64
+		}
+		if neg {
+			return -v
+		}
+		return v
+	case neg:
+		if overflow || v > 1<<63 {
+			t.setErrno(errno.ERANGE)
+			return 1 << 63 // LLONG_MIN
+		}
+		return -v
+	default:
+		if overflow || v > math.MaxInt64 {
+			t.setErrno(errno.ERANGE)
+			return math.MaxInt64
+		}
+		return v
+	}
+}
+
+// long long strtoll(const char *nptr, char **endptr, int base);
+func Xstrtoll(t *TLS, nptr, endptr uintptr, base int32) int64 {
+	if __ccgo_strace {
+		trc("t=%v nptr=%v endptr=%v base=%v, (%v:)", t, nptr, endptr, base, origin(2))
+	}
+	return int64(strtoi64(t, nptr, endptr, base, false))
+}
+
+// __int64 _strtoi64(const char *nptr, char **endptr, int base);
+func X_strtoi64(t *TLS, nptr, endptr uintptr, base int32) int64 {
+	return Xstrtoll(t, nptr, endptr, base)
+}
+
+// unsigned long long strtoull(const char *nptr, char **endptr, int base);
+func Xstrtoull(t *TLS, nptr, endptr uintptr, base int32) uint64 {
+	if __ccgo_strace {
+		trc("t=%v nptr=%v endptr=%v base=%v, (%v:)", t, nptr, endptr, base, origin(2))
+	}
+	return strtoi64(t, nptr, endptr, base, true)
+}
+
+// unsigned __int64 _strtoui64(const char *nptr, char **endptr, int base);
+func X_strtoui64(t *TLS, nptr, endptr uintptr, base int32) uint64 {
+	return Xstrtoull(t, nptr, endptr, base)
+}
+
+// dup2 duplicates the handle behind oldfd under the descriptor newfd, closing
+// whatever newfd was.
+func dup2(t *TLS, oldfd, newfd int32) int32 {
+	f, ok := fdToFile(oldfd)
+	if !ok {
+		t.setErrno(errno.EBADF)
+		return -1
+	}
+
+	if oldfd == newfd {
+		return newfd
+	}
+
+	var h windows.Handle
+	p := windows.CurrentProcess()
+	if err := windows.DuplicateHandle(p, f.Handle, p, &h, 0, true, windows.DUPLICATE_SAME_ACCESS); err != nil {
+		t.setErrno(err)
+		return -1
+	}
+
+	if old, ok := fdToFile(newfd); ok {
+		remFile(old)
+		windows.Close(old.Handle)
+	}
+	addFile(h, newfd)
+	// Keep the descriptors handed out later above newfd.
+	for {
+		n := atomic.LoadInt32(&w_nextFd)
+		if n >= newfd || atomic.CompareAndSwapInt32(&w_nextFd, n, newfd) {
+			break
+		}
+	}
+	return newfd
+}
+
+// The functions below expose the descriptor table for code that has to share
+// it with this libc, such as UCRT replacements, so that it does not need
+// go:linkname into unexported functions. See
+// https://gitlab.com/cznic/libc/-/issues/58.
+
+// WindowsHandle returns the handle behind the descriptor fd and whether fd is
+// open in this libc.
+func WindowsHandle(fd int32) (windows.Handle, bool) {
+	f, ok := fdToFile(fd)
+	if !ok {
+		return windows.InvalidHandle, false
+	}
+
+	return f.Handle, true
+}
+
+// WrapWindowsHandle enters h into the descriptor table under a new
+// descriptor, which it returns. Closing the descriptor closes h.
+func WrapWindowsHandle(h windows.Handle) int32 {
+	_, fd := wrapFdHandle(h)
+	return fd
+}
+
+// WrapWindowsHandleAt enters h into the descriptor table as fd, replacing a
+// descriptor of that number without closing its handle. Closing the
+// descriptor closes h.
+func WrapWindowsHandleAt(h windows.Handle, fd int32) {
+	if old, ok := fdToFile(fd); ok {
+		remFile(old)
+	}
+	addFile(h, fd)
+	for {
+		n := atomic.LoadInt32(&w_nextFd)
+		if n >= fd || atomic.CompareAndSwapInt32(&w_nextFd, n, fd) {
+			break
+		}
+	}
+}
+
+// ReleaseWindowsHandle removes fd from the descriptor table without closing
+// its handle, which it returns together with whether fd was open.
+func ReleaseWindowsHandle(fd int32) (windows.Handle, bool) {
+	f, ok := fdToFile(fd)
+	if !ok {
+		return windows.InvalidHandle, false
+	}
+
+	remFile(f)
+	return f.Handle, true
 }

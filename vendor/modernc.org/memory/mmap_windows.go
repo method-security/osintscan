@@ -5,8 +5,8 @@
 package memory // import "modernc.org/memory"
 
 import (
-	"os"
 	syscall "golang.org/x/sys/windows"
+	"os"
 )
 
 const (
@@ -20,6 +20,15 @@ const (
 )
 
 const pageSizeLog = 16
+
+// canCarve is false on Windows: VirtualFree with MEM_RELEASE frees
+// only whole VirtualAlloc allocations, never a sub-range.
+const canCarve = false
+
+// mmapGranularity is the granularity mmap in this file actually maps at:
+// VirtualAlloc reserves at 64 KiB granularity, so mmap rounds every request
+// up to a pageSize multiple and page.size records that.
+const mmapGranularity = pageSize
 
 var (
 	modkernel32      = syscall.NewLazySystemDLL("kernel32.dll")

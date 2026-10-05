@@ -38,22 +38,21 @@ func (t *Table[V]) sizeUpdate(is4 bool, delta int) {
 }
 
 // Contains reports whether any stored prefix covers the given IP address.
-// Returns false for invalid IP addresses.
+// It returns false for invalid IP addresses.
 //
 // This method performs longest-prefix matching and returns true if any prefix
 // in the routing table contains the IP address, regardless of the associated value.
 //
-// It does not return the value or the prefix of the matching item,
-// but as a test against an allow-/deny-list it's often sufficient
-// and even few nanoseconds faster than Lookup.
+// It does not return the value or prefix of the matching item, but as a test
+// against an allow/deny list, it is often sufficient and a few nanoseconds
+// faster than Lookup.
 //
-// Performance note: ip must not contain an IPv6 zone identifier (ip.Zone() == "").
-// Passing a zoned IPv6 address results in undefined behavior (e.g. incorrect
-// match results or false negatives).
+// Any IPv6 zone identifier is stripped and has no effect on the lookup result.
 func (f *Table[V]) Contains(ip netip.Addr) bool {
 	// speed is top priority: no explicit test for ip.IsValid
 	// if ip is invalid, AsSlice() returns nil, Contains returns false.
 	is4 := ip.Is4()
+
 	n := f.rootNodeByVersion(is4)
 
 	for _, octet := range ip.AsSlice() {
@@ -78,6 +77,14 @@ func (f *Table[V]) Contains(ip netip.Addr) bool {
 			return true
 
 		case *nodes.LeafNode[V]:
+			// Strip IPv6 zone before netip.Prefix.Contains to prevent false returns.
+			if !is4 {
+				// but netip.Addr.withoutZone  is not exported :-(
+				// and netip.Addr.WithZone("") is not inlinable, so we have to resort to this clever trick:
+				// https://github.com/gaissmai/bart/pull/418#issuecomment-5735613506
+				ip = netip.PrefixFrom(ip, 0).Addr()
+			}
+
 			return kid.Prefix.Contains(ip)
 		}
 	}
@@ -85,20 +92,17 @@ func (f *Table[V]) Contains(ip netip.Addr) bool {
 	return false
 }
 
-// Lookup performs a longest prefix match (LPM) lookup for the given address.
-// Returns the associated value (payload) and true if a matching prefix is found.
-// Returns the zero value and false for invalid IP addresses or if no prefix contains the address.
+// Lookup performs a longest-prefix match (LPM) lookup for the given address.
+// It returns the associated value (payload) and true if a matching prefix is found.
+// It returns the zero value and false for invalid IP addresses or if no prefix contains the address.
 //
 // This is the fundamental operation for IP routing decisions, finding the
-// best matching route (most specific longest prefix) for a destination address.
+// best matching route (the most specific longest prefix) for a destination address.
 //
-// Performance note: ip must not contain an IPv6 zone identifier (ip.Zone() == "").
-// Passing a zoned IPv6 address results in undefined behavior (e.g. incorrect
-// match results or false negatives).
+// Any IPv6 zone identifier is stripped and has no effect on the lookup result.
 func (t *Table[V]) Lookup(ip netip.Addr) (val V, ok bool) {
 	is4 := ip.Is4()
 	octets := ip.AsSlice()
-
 	n := t.rootNodeByVersion(is4)
 
 	// stack of the traversed nodes for fast backtracking, if needed
@@ -134,6 +138,14 @@ LOOP:
 			return kid.Value, true
 
 		case *nodes.LeafNode[V]:
+			// Strip IPv6 zone before netip.Prefix.Contains to prevent false returns.
+			if !is4 {
+				// but netip.Addr.withoutZone  is not exported :-(
+				// and netip.Addr.WithZone("") is not inlinable, so we have to resort to this clever trick:
+				// https://github.com/gaissmai/bart/pull/418#issuecomment-5735613506
+				ip = netip.PrefixFrom(ip, 0).Addr()
+			}
+
 			if kid.Prefix.Contains(ip) {
 				return kid.Value, true
 			}
@@ -160,7 +172,7 @@ LOOP:
 		if n.PrefixCount() != 0 {
 			idx := art.OctetToIdx(octets[depth])
 			// lookupIdx() manually inlined
-			if lpmIdx, ok2 := n.Prefixes.IntersectionTop(&lpm.LookupTbl[idx]); ok2 {
+			if lpmIdx, ok2 := n.Prefixes.AndTop(&lpm.LookupTbl[idx]); ok2 {
 				return n.MustGetPrefix(lpmIdx), ok2
 			}
 		}
@@ -297,7 +309,7 @@ LOOP:
 
 		// manually inlined: lookupIdx(idx)
 		var topIdx uint8
-		if topIdx, ok = n.Prefixes.IntersectionTop(&lpm.LookupTbl[idx]); ok {
+		if topIdx, ok = n.Prefixes.AndTop(&lpm.LookupTbl[idx]); ok {
 			val = n.MustGetPrefix(topIdx)
 
 			// called from LookupPrefix
