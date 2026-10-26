@@ -1,6 +1,6 @@
 module github.com/Method-Security/osintscan
 
-go 1.26.8
+go 1.26.10
 
 require (
 	github.com/Method-Security/pkg v0.1.1
@@ -17,7 +17,7 @@ require (
 	github.com/spf13/cobra v1.10.2
 	github.com/stretchr/testify v1.12.1
 	github.com/weppos/publicsuffix-go v0.50.3
-	golang.org/x/net v0.59.0
+	golang.org/x/net v0.60.0
 )
 
 require (
