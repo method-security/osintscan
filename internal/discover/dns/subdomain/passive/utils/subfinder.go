@@ -73,6 +73,7 @@ func CreateSubfinderRunners(cfg dnsfern.DiscoverDnsSubdomainPassiveConfig, count
 // using the pre-initialized runner.
 func (s *SubfinderRunner) EnumerateDomain(ctx context.Context, domain string) ([]string, error) {
 	log := svc1log.FromContext(ctx)
+	domain = NormalizeDomain(domain)
 
 	log.Debug("Starting subfinder enumeration", svc1log.SafeParam("domain", domain))
 
@@ -87,7 +88,9 @@ func (s *SubfinderRunner) EnumerateDomain(ctx context.Context, domain string) ([
 
 	subdomains := make([]string, 0, len(results))
 	for sub := range results {
-		subdomains = append(subdomains, sub)
+		if IsDomainInScope(sub, domain) {
+			subdomains = append(subdomains, NormalizeDomain(sub))
+		}
 	}
 	sort.Strings(subdomains)
 

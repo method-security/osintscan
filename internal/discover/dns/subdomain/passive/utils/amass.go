@@ -2,6 +2,8 @@ package utils
 
 import (
 	"context"
+	"fmt"
+	"os"
 	"sort"
 	"time"
 
@@ -10,6 +12,7 @@ import (
 	"github.com/owasp-amass/amass/v4/datasrcs"
 	"github.com/owasp-amass/amass/v4/enum"
 	"github.com/owasp-amass/amass/v4/systems"
+	assettypes "github.com/owasp-amass/asset-db/types"
 	"github.com/owasp-amass/config/config"
 	oam "github.com/owasp-amass/open-asset-model"
 	"github.com/owasp-amass/open-asset-model/domain"
@@ -20,7 +23,7 @@ import (
 func buildAmassConfig(cfg dnsfern.DiscoverDnsSubdomainPassiveConfig, log svc1log.Logger) *config.Config {
 	amassCfg := config.NewConfig()
 	amassCfg.Passive = true
-	amassCfg.AddDomain(cfg.Domain)
+	amassCfg.AddDomain(NormalizeDomain(cfg.Domain))
 	amassCfg.Recursive = false
 	amassCfg.Verbose = false
 	resolvers := make([]string, 0, len(cfg.DnsResolvers))
@@ -45,9 +48,13 @@ func buildAmassConfig(cfg dnsfern.DiscoverDnsSubdomainPassiveConfig, log svc1log
 	return amassCfg
 }
 
-// GetSubdomainsPassiveWithAmass uses the Amass v4 library to enumerate subdomains (passive) via the in-memory graph.
+// GetSubdomainsPassiveWithAmass uses Amass v4 to passively enumerate the target domain and its subdomains in an isolated local graph.
 func GetSubdomainsPassiveWithAmass(ctx context.Context, cfg dnsfern.DiscoverDnsSubdomainPassiveConfig) ([]string, error) {
 	log := svc1log.FromContext(ctx)
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	cfg.Domain = NormalizeDomain(cfg.Domain)
 
 	log.Info("Configuring Amass v4 for passive discovery",
 		svc1log.SafeParam("domain", cfg.Domain),
@@ -55,6 +62,21 @@ func GetSubdomainsPassiveWithAmass(ctx context.Context, cfg dnsfern.DiscoverDnsS
 
 	// Build amass v4 config
 	amassCfg := buildAmassConfig(cfg, log)
+	if len(amassCfg.Domains()) != 1 {
+		return nil, fmt.Errorf("invalid Amass target domain: %q", cfg.Domain)
+	}
+
+	// LocalSystem otherwise uses a shared SQLite database across concurrent scans.
+	dir, err := os.MkdirTemp("", "osintscan-amass-*")
+	if err != nil {
+		return nil, fmt.Errorf("create Amass output directory: %w", err)
+	}
+	defer func() {
+		if err := os.RemoveAll(dir); err != nil {
+			log.Warn("Failed to remove Amass output directory", svc1log.SafeParam("error", err.Error()))
+		}
+	}()
+	amassCfg.Dir = dir
 
 	// Create a local system for Amass v4
 	sys, err := systems.NewLocalSystem(amassCfg)
@@ -64,6 +86,11 @@ func GetSubdomainsPassiveWithAmass(ctx context.Context, cfg dnsfern.DiscoverDnsS
 			svc1log.SafeParam("error", err.Error()))
 		return []string{}, err
 	}
+	defer func() {
+		if err := sys.Shutdown(); err != nil {
+			log.Warn("Failed to shut down Amass system", svc1log.SafeParam("error", err.Error()))
+		}
+	}()
 
 	// Load all available data sources
 	allSources := datasrcs.GetAllSources(sys)
@@ -80,22 +107,27 @@ func GetSubdomainsPassiveWithAmass(ctx context.Context, cfg dnsfern.DiscoverDnsS
 		svc1log.SafeParam("domain", cfg.Domain),
 		svc1log.SafeParam("source_count", len(dataSources)))
 
-	// Get the graph database from the system
+	// Get the graph database from the system.
 	graphs := sys.GraphDatabases()
 	if len(graphs) == 0 {
 		log.Warn("No graph database available",
 			svc1log.SafeParam("domain", cfg.Domain))
-		return []string{}, nil
+		return nil, fmt.Errorf("no Amass graph database available")
 	}
 	graph := graphs[0]
 
 	// Create and run enumeration
 	e := enum.NewEnumeration(amassCfg, sys, graph)
 
-	// Start a goroutine to report progress every minute
+	// Stop and join the progress reader before shutting down the system.
 	progressCtx, cancelProgress := context.WithCancel(ctx)
-	defer cancelProgress()
+	progressDone := make(chan struct{})
+	defer func() {
+		cancelProgress()
+		<-progressDone
+	}()
 	go func() {
+		defer close(progressDone)
 		ticker := time.NewTicker(10 * time.Second)
 		defer ticker.Stop()
 		previousDomains := make(map[string]struct{})
@@ -108,10 +140,8 @@ func GetSubdomainsPassiveWithAmass(ctx context.Context, cfg dnsfern.DiscoverDnsS
 				// Query the graph database for current count
 				if assets, err := graph.DB.FindByType(oam.FQDN, amassCfg.CollectionStartTime); err == nil {
 					currentDomains := make(map[string]struct{})
-					for _, asset := range assets {
-						if fqdn, ok := asset.Asset.(domain.FQDN); ok {
-							currentDomains[fqdn.Name] = struct{}{}
-						}
+					for _, name := range scopedAmassSubdomains(assets, cfg.Domain) {
+						currentDomains[name] = struct{}{}
 					}
 
 					// Find new domains since last check
@@ -147,9 +177,8 @@ func GetSubdomainsPassiveWithAmass(ctx context.Context, cfg dnsfern.DiscoverDnsS
 		return []string{}, err
 	}
 
-	// Query the graph database for all discovered FQDN assets
+	// Query the graph database for all discovered FQDN assets.
 	// Use the collection start time to get only newly discovered assets
-	found := map[string]struct{}{}
 	assets, err := graph.DB.FindByType(oam.FQDN, amassCfg.CollectionStartTime)
 	if err != nil {
 		log.Warn("Failed to query graph database",
@@ -162,23 +191,30 @@ func GetSubdomainsPassiveWithAmass(ctx context.Context, cfg dnsfern.DiscoverDnsS
 		svc1log.SafeParam("domain", cfg.Domain),
 		svc1log.SafeParam("asset_count", len(assets)))
 
-	for _, asset := range assets {
-		if fqdn, ok := asset.Asset.(domain.FQDN); ok {
-			if _, exists := found[fqdn.Name]; !exists {
-				found[fqdn.Name] = struct{}{}
-			}
-		}
-	}
-
-	var subdomains []string
-	for s := range found {
-		subdomains = append(subdomains, s)
-	}
-	sort.Strings(subdomains)
+	subdomains := scopedAmassSubdomains(assets, cfg.Domain)
 
 	log.Info("Amass enumeration completed (v4)",
 		svc1log.SafeParam("domain", cfg.Domain),
 		svc1log.SafeParam("subdomains_found", len(subdomains)))
 
 	return subdomains, nil
+}
+
+// The graph also contains related infrastructure outside the requested domain.
+func scopedAmassSubdomains(assets []*assettypes.Asset, target string) []string {
+	found := make(map[string]struct{})
+	for _, asset := range assets {
+		if asset == nil {
+			continue
+		}
+		if fqdn, ok := asset.Asset.(domain.FQDN); ok && IsDomainInScope(fqdn.Name, target) {
+			found[NormalizeDomain(fqdn.Name)] = struct{}{}
+		}
+	}
+	subdomains := make([]string, 0, len(found))
+	for name := range found {
+		subdomains = append(subdomains, name)
+	}
+	sort.Strings(subdomains)
+	return subdomains
 }

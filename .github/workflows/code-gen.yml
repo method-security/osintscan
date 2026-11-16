@@ -6,6 +6,10 @@ on:
 permissions:
   contents: read
 
+env:
+  # Fern Definitions require the legacy hosted generation backend.
+  FERN_USE_SDK_GEN_API: "false"
+
 jobs:
   generate_fern_go:
     name: Generate Fern Code (Go)

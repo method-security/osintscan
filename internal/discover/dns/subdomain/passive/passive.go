@@ -73,6 +73,9 @@ func discoverDomainsParallel(ctx context.Context, domains []string, baseCfg dnsf
 	close(work)
 
 	numWorkers := workers
+	if numWorkers < 1 {
+		numWorkers = 1
+	}
 	if numWorkers > len(domains) {
 		numWorkers = len(domains)
 	}
@@ -81,10 +84,12 @@ func discoverDomainsParallel(ctx context.Context, domains []string, baseCfg dnsf
 	}
 
 	var sfRunners []*subutils.SubfinderRunner
+	var sfInitErr error
 	if runSubfinder {
 		var err error
 		sfRunners, err = subutils.CreateSubfinderRunners(baseCfg, numWorkers)
 		if err != nil {
+			sfInitErr = err
 			log.Warn("Failed to create subfinder runners, continuing with other modules",
 				svc1log.SafeParam("error", err.Error()))
 			sfRunners = nil
@@ -116,6 +121,9 @@ func discoverDomainsParallel(ctx context.Context, domains []string, baseCfg dnsf
 
 				var subdomains []string
 				var errors []string
+				if sfInitErr != nil {
+					errors = append(errors, sfInitErr.Error())
+				}
 
 				if sfRunner != nil {
 					subs, err := sfRunner.EnumerateDomain(ctx, item.domain)
@@ -154,13 +162,17 @@ func discoverDomainsParallel(ctx context.Context, domains []string, baseCfg dnsf
 // This dramatically reduces the recursive scan surface compared to rescanning
 // every individual FQDN.
 func extractChildDomains(subdomains []string, rootDomain string, depth int, scanned map[string]bool) []string {
+	rootDomain = subutils.NormalizeDomain(rootDomain)
+	if depth < 1 {
+		return nil
+	}
 	rootLabels := strings.Count(rootDomain, ".") + 1
 	targetLabels := rootLabels + depth
 
 	unique := map[string]bool{}
 	for _, sub := range subdomains {
-		sub = strings.TrimSuffix(strings.TrimSpace(sub), ".")
-		if sub == "" {
+		sub = subutils.NormalizeDomain(sub)
+		if !subutils.IsDomainInScope(sub, rootDomain) {
 			continue
 		}
 		labels := strings.Split(sub, ".")
@@ -204,9 +216,10 @@ func GetDomainSubdomainsPassive(ctx context.Context, config dnsfern.DiscoverDnsS
 
 	// Initial scan of the primary domain
 	initialCfg := *config.Passive
+	initialCfg.Domain = subutils.NormalizeDomain(initialCfg.Domain)
 	subs, errs := discoverForDomain(ctx, initialCfg, runSubfinder, runAmass)
 	errors = append(errors, errs...)
-	scannedDomains[config.Passive.Domain] = true
+	scannedDomains[initialCfg.Domain] = true
 
 	for _, s := range subs {
 		allSubdomainsSet[s] = true
