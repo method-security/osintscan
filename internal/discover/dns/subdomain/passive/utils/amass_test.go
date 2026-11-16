@@ -24,8 +24,8 @@ func TestScopedAmassSubdomains(t *testing.T) {
 		target string
 		want   []string
 	}{
-		{" Example.COM. ", []string{"api.example.com", "deep.api.example.com"}},
-		{"api.example.com", []string{"deep.api.example.com"}},
+		{" Example.COM. ", []string{"api.example.com", "deep.api.example.com", "example.com"}},
+		{"api.example.com", []string{"api.example.com", "deep.api.example.com"}},
 		{"unknown.test", []string{}},
 		{"", []string{}},
 	} {

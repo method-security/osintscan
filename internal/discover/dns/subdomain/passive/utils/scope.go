@@ -9,11 +9,11 @@ func NormalizeDomain(name string) string {
 	return strings.TrimSuffix(strings.ToLower(strings.TrimSpace(name)), ".")
 }
 
-// IsSubdomain matches strict descendants at a DNS label boundary, excluding the apex.
-func IsSubdomain(name, target string) bool {
+// IsDomainInScope matches the target itself and descendants at a DNS label boundary.
+func IsDomainInScope(name, target string) bool {
 	name = NormalizeDomain(name)
 	target = NormalizeDomain(target)
-	if target == "" || !strings.HasSuffix(name, "."+target) {
+	if target == "" || (name != target && !strings.HasSuffix(name, "."+target)) {
 		return false
 	}
 	for _, label := range strings.Split(name, ".") {

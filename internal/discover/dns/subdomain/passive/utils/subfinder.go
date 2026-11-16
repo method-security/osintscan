@@ -88,7 +88,7 @@ func (s *SubfinderRunner) EnumerateDomain(ctx context.Context, domain string) ([
 
 	subdomains := make([]string, 0, len(results))
 	for sub := range results {
-		if IsSubdomain(sub, domain) {
+		if IsDomainInScope(sub, domain) {
 			subdomains = append(subdomains, NormalizeDomain(sub))
 		}
 	}

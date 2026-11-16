@@ -48,7 +48,7 @@ func buildAmassConfig(cfg dnsfern.DiscoverDnsSubdomainPassiveConfig, log svc1log
 	return amassCfg
 }
 
-// GetSubdomainsPassiveWithAmass uses Amass v4 to passively enumerate strict subdomains in an isolated local graph.
+// GetSubdomainsPassiveWithAmass uses Amass v4 to passively enumerate the target domain and its subdomains in an isolated local graph.
 func GetSubdomainsPassiveWithAmass(ctx context.Context, cfg dnsfern.DiscoverDnsSubdomainPassiveConfig) ([]string, error) {
 	log := svc1log.FromContext(ctx)
 	if err := ctx.Err(); err != nil {
@@ -207,7 +207,7 @@ func scopedAmassSubdomains(assets []*assettypes.Asset, target string) []string {
 		if asset == nil {
 			continue
 		}
-		if fqdn, ok := asset.Asset.(domain.FQDN); ok && IsSubdomain(fqdn.Name, target) {
+		if fqdn, ok := asset.Asset.(domain.FQDN); ok && IsDomainInScope(fqdn.Name, target) {
 			found[NormalizeDomain(fqdn.Name)] = struct{}{}
 		}
 	}

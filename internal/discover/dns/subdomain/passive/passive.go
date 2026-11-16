@@ -172,7 +172,7 @@ func extractChildDomains(subdomains []string, rootDomain string, depth int, scan
 	unique := map[string]bool{}
 	for _, sub := range subdomains {
 		sub = subutils.NormalizeDomain(sub)
-		if !subutils.IsSubdomain(sub, rootDomain) {
+		if !subutils.IsDomainInScope(sub, rootDomain) {
 			continue
 		}
 		labels := strings.Split(sub, ".")
