@@ -207,8 +207,17 @@ func scopedAmassSubdomains(assets []*assettypes.Asset, target string) []string {
 		if asset == nil {
 			continue
 		}
-		if fqdn, ok := asset.Asset.(domain.FQDN); ok && IsDomainInScope(fqdn.Name, target) {
-			found[NormalizeDomain(fqdn.Name)] = struct{}{}
+		var name string
+		switch fqdn := asset.Asset.(type) {
+		case domain.FQDN:
+			name = fqdn.Name
+		case *domain.FQDN:
+			if fqdn != nil {
+				name = fqdn.Name
+			}
+		}
+		if IsDomainInScope(name, target) {
+			found[NormalizeDomain(name)] = struct{}{}
 		}
 	}
 	subdomains := make([]string, 0, len(found))

@@ -4,6 +4,7 @@ go 1.26.10
 
 require (
 	github.com/Method-Security/pkg v0.1.1
+	github.com/caffix/netmap v0.2.5
 	github.com/google/uuid v1.6.0
 	github.com/miekg/dns v1.1.73
 	github.com/owasp-amass/amass/v4 v4.2.0
@@ -39,7 +40,6 @@ require (
 	github.com/aymerick/douceur v0.2.0 // indirect
 	github.com/benbjohnson/clock v1.3.5 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
-	github.com/caffix/netmap v0.2.5 // indirect
 	github.com/caffix/pipeline v0.2.5 // indirect
 	github.com/caffix/queue v0.3.1 // indirect
 	github.com/caffix/service v0.3.0 // indirect
