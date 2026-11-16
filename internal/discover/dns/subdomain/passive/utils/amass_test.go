@@ -3,13 +3,11 @@ package utils
 import (
 	"context"
 	"errors"
-	"path/filepath"
 	"reflect"
 	"testing"
 	"time"
 
 	dnsfern "github.com/Method-Security/osintscan/generated/go/discover/dns"
-	"github.com/caffix/netmap"
 	assettypes "github.com/owasp-amass/asset-db/types"
 	oam "github.com/owasp-amass/open-asset-model"
 	"github.com/owasp-amass/open-asset-model/domain"
@@ -17,10 +15,7 @@ import (
 )
 
 func TestAmassScopeAfterDatabaseRoundTrip(t *testing.T) {
-	graph := netmap.NewGraph("local", filepath.Join(t.TempDir(), "amass.sqlite"), "")
-	if graph == nil {
-		t.Fatal("failed to create Amass graph")
-	}
+	graph := newAmassTestGraph(t)
 	for _, name := range []string{"example.com", "api.example.com", "deep.api.example.com", "api.other.com", "notexample.com", "example.com.evil.test"} {
 		if _, err := graph.DB.Create(nil, "", domain.FQDN{Name: name}); err != nil {
 			t.Fatalf("store %q: %v", name, err)

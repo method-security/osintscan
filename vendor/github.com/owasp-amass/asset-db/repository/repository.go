@@ -12,7 +12,6 @@ import (
 // Repository defines the methods for interacting with the asset database.
 // It provides operations for creating, retrieving, and linking assets.
 type Repository interface {
-	GetDBType() string
 	CreateAsset(asset oam.Asset) (*types.Asset, error)
 	DeleteAsset(id string) error
 	DeleteRelation(id string) error
@@ -23,7 +22,4 @@ type Repository interface {
 	Link(source *types.Asset, relation string, destination *types.Asset) (*types.Relation, error)
 	IncomingRelations(asset *types.Asset, since time.Time, relationTypes ...string) ([]*types.Relation, error)
 	OutgoingRelations(asset *types.Asset, since time.Time, relationTypes ...string) ([]*types.Relation, error)
-	RawQuery(sqlstr string, results interface{}) error
-	AssetQuery(constraints string) ([]*types.Asset, error)
-	RelationQuery(constraints string) ([]*types.Relation, error)
 }
