@@ -4,12 +4,14 @@ go 1.26.10
 
 require (
 	github.com/Method-Security/pkg v0.1.1
+	github.com/caffix/netmap v0.2.5
 	github.com/google/uuid v1.6.0
 	github.com/miekg/dns v1.1.73
 	github.com/owasp-amass/amass/v4 v4.2.0
-	github.com/owasp-amass/asset-db v0.3.9
+	// Keep the database/model APIs aligned with Amass v4 and netmap's value-asset consumers.
+	github.com/owasp-amass/asset-db v0.3.3
 	github.com/owasp-amass/config v0.1.5
-	github.com/owasp-amass/open-asset-model v0.3.2
+	github.com/owasp-amass/open-asset-model v0.2.0
 	github.com/palantir/pkg/datetime v1.4.0
 	github.com/palantir/witchcraft-go-logging v1.73.0
 	github.com/projectdiscovery/dnsx v1.3.1
@@ -39,7 +41,6 @@ require (
 	github.com/aymerick/douceur v0.2.0 // indirect
 	github.com/benbjohnson/clock v1.3.5 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
-	github.com/caffix/netmap v0.2.5 // indirect
 	github.com/caffix/pipeline v0.2.5 // indirect
 	github.com/caffix/queue v0.3.1 // indirect
 	github.com/caffix/service v0.3.0 // indirect

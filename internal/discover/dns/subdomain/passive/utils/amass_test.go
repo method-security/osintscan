@@ -5,12 +5,40 @@ import (
 	"errors"
 	"reflect"
 	"testing"
+	"time"
 
 	dnsfern "github.com/Method-Security/osintscan/generated/go/discover/dns"
 	assettypes "github.com/owasp-amass/asset-db/types"
+	oam "github.com/owasp-amass/open-asset-model"
 	"github.com/owasp-amass/open-asset-model/domain"
 	"github.com/palantir/witchcraft-go-logging/wlog/svclog/svc1log"
 )
+
+func TestAmassScopeAfterDatabaseRoundTrip(t *testing.T) {
+	graph := newAmassTestGraph(t)
+	for _, name := range []string{"example.com", "api.example.com", "deep.api.example.com", "api.other.com", "notexample.com", "example.com.evil.test"} {
+		if _, err := graph.DB.Create(nil, "", domain.FQDN{Name: name}); err != nil {
+			t.Fatalf("store %q: %v", name, err)
+		}
+	}
+	assets, err := graph.DB.FindByType(oam.FQDN, time.Time{})
+	if err != nil {
+		t.Fatalf("query graph: %v", err)
+	}
+	for _, tt := range []struct {
+		target string
+		want   []string
+	}{
+		{"example.com", []string{"api.example.com", "deep.api.example.com", "example.com"}},
+		{"api.example.com", []string{"api.example.com", "deep.api.example.com"}},
+	} {
+		t.Run(tt.target, func(t *testing.T) {
+			if got := scopedAmassSubdomains(assets, tt.target); !reflect.DeepEqual(got, tt.want) {
+				t.Fatalf("graph scope violation: got %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
 
 func TestAmassScopeBoundaries(t *testing.T) {
 	for _, tt := range []struct {
@@ -77,6 +105,7 @@ func TestAmassScopeBoundaries(t *testing.T) {
 			assets := make([]*assettypes.Asset, 0, len(tt.names))
 			for _, name := range tt.names {
 				assets = append(assets, &assettypes.Asset{Asset: domain.FQDN{Name: name}})
+				assets = append(assets, &assettypes.Asset{Asset: &domain.FQDN{Name: name}})
 			}
 			if got := scopedAmassSubdomains(assets, tt.target); !reflect.DeepEqual(got, tt.want) {
 				t.Fatalf("scope violation: got %v, want %v", got, tt.want)
@@ -86,7 +115,7 @@ func TestAmassScopeBoundaries(t *testing.T) {
 }
 
 func TestScopedAmassSubdomains(t *testing.T) {
-	assets := []*assettypes.Asset{nil, {}}
+	assets := []*assettypes.Asset{nil, {}, {Asset: (*domain.FQDN)(nil)}}
 	for _, name := range []string{
 		"example.com", "EXAMPLE.COM.", "api.example.com", "API.EXAMPLE.COM.",
 		"deep.api.example.com", "other.com", "notexample.com", "api.notexample.com",

@@ -1,7 +1,3 @@
-// Copyright © by Jeff Foley 2022-2024. All rights reserved.
-// Use of this source code is governed by Apache 2 LICENSE that can be found in the LICENSE file.
-// SPDX-License-Identifier: Apache-2.0
-
 package repository
 
 import (
@@ -11,9 +7,11 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/glebarez/sqlite"
 	"github.com/owasp-amass/asset-db/types"
 	oam "github.com/owasp-amass/open-asset-model"
+	"github.com/owasp-amass/open-asset-model/domain"
+
+	"github.com/glebarez/sqlite"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
@@ -31,8 +29,7 @@ const (
 
 // sqlRepository is a repository implementation using GORM as the underlying ORM.
 type sqlRepository struct {
-	db     *gorm.DB
-	dbType DBType
+	db *gorm.DB
 }
 
 // New creates a new instance of the asset database repository.
@@ -43,8 +40,7 @@ func New(dbType DBType, dsn string) *sqlRepository {
 	}
 
 	return &sqlRepository{
-		db:     db,
-		dbType: dbType,
+		db: db,
 	}
 }
 
@@ -68,11 +64,6 @@ func postgresDatabase(dsn string) (*gorm.DB, error) {
 // sqliteDatabase creates a new SQLite database connection using the provided data source name (dsn).
 func sqliteDatabase(dsn string) (*gorm.DB, error) {
 	return gorm.Open(sqlite.Open(dsn), &gorm.Config{Logger: logger.Default.LogMode(logger.Silent)})
-}
-
-// GetDBType returns the type of the database.
-func (sql *sqlRepository) GetDBType() string {
-	return string(sql.dbType)
 }
 
 // CreateAsset creates a new asset in the database.
@@ -110,7 +101,7 @@ func (sql *sqlRepository) CreateAsset(assetData oam.Asset) (*types.Asset, error)
 	}
 
 	return &types.Asset{
-		ID:        strconv.FormatUint(asset.ID, 10),
+		ID:        strconv.FormatInt(asset.ID, 10),
 		CreatedAt: asset.CreatedAt,
 		LastSeen:  asset.LastSeen,
 		Asset:     assetData,
@@ -129,6 +120,7 @@ func (sql *sqlRepository) assetSeen(asset *types.Asset) error {
 	if result.Error != nil {
 		return result.Error
 	}
+
 	return nil
 }
 
@@ -136,11 +128,11 @@ func (sql *sqlRepository) assetSeen(asset *types.Asset) error {
 // It takes a string representing the asset ID and removes the corresponding asset from the database.
 // Returns an error if the asset is not found.
 func (sql *sqlRepository) DeleteAsset(id string) error {
-	var ids []uint64
+	var ids []int64
 
 	if rels, err := sql.IncomingRelations(&types.Asset{ID: id}, time.Time{}); err == nil {
 		for _, rel := range rels {
-			if relId, err := strconv.ParseUint(rel.ID, 10, 64); err == nil {
+			if relId, err := strconv.ParseInt(rel.ID, 10, 64); err == nil {
 				ids = append(ids, relId)
 			}
 		}
@@ -148,7 +140,7 @@ func (sql *sqlRepository) DeleteAsset(id string) error {
 
 	if rels, err := sql.OutgoingRelations(&types.Asset{ID: id}, time.Time{}); err == nil {
 		for _, rel := range rels {
-			if relId, err := strconv.ParseUint(rel.ID, 10, 64); err == nil {
+			if relId, err := strconv.ParseInt(rel.ID, 10, 64); err == nil {
 				ids = append(ids, relId)
 			}
 		}
@@ -158,7 +150,7 @@ func (sql *sqlRepository) DeleteAsset(id string) error {
 		return err
 	}
 
-	assetId, err := strconv.ParseUint(id, 10, 64)
+	assetId, err := strconv.ParseInt(id, 10, 64)
 	if err != nil {
 		return err
 	}
@@ -168,6 +160,7 @@ func (sql *sqlRepository) DeleteAsset(id string) error {
 	if result.Error != nil {
 		return result.Error
 	}
+
 	return nil
 }
 
@@ -175,15 +168,16 @@ func (sql *sqlRepository) DeleteAsset(id string) error {
 // It takes a string representing the relation ID and removes the corresponding relation from the database.
 // Returns an error if the relation is not found.
 func (sql *sqlRepository) DeleteRelation(id string) error {
-	relId, err := strconv.ParseUint(id, 10, 64)
+	relId, err := strconv.ParseInt(id, 10, 64)
 	if err != nil {
 		return err
 	}
-	return sql.deleteRelations([]uint64{relId})
+
+	return sql.deleteRelations([]int64{relId})
 }
 
 // deleteRelations removes all rows in the Relations table with primary keys in the provided slice.
-func (sql *sqlRepository) deleteRelations(ids []uint64) error {
+func (sql *sqlRepository) deleteRelations(ids []int64) error {
 	return sql.db.Exec("DELETE FROM relations WHERE id IN ?", ids).Error
 }
 
@@ -230,7 +224,7 @@ func (sql *sqlRepository) FindAssetByContent(assetData oam.Asset, since time.Tim
 		}
 
 		storedAssets = append(storedAssets, &types.Asset{
-			ID:        strconv.FormatUint(asset.ID, 10),
+			ID:        strconv.FormatInt(asset.ID, 10),
 			CreatedAt: asset.CreatedAt,
 			LastSeen:  asset.LastSeen,
 			Asset:     assetData,
@@ -245,7 +239,7 @@ func (sql *sqlRepository) FindAssetByContent(assetData oam.Asset, since time.Tim
 // If since.IsZero(), the parameter will be ignored.
 // Returns the found asset as a types.Asset or an error if the asset is not found.
 func (sql *sqlRepository) FindAssetById(id string, since time.Time) (*types.Asset, error) {
-	assetId, err := strconv.ParseUint(id, 10, 64)
+	assetId, err := strconv.ParseInt(id, 10, 64)
 	if err != nil {
 		return &types.Asset{}, err
 	}
@@ -267,11 +261,53 @@ func (sql *sqlRepository) FindAssetById(id string, since time.Time) (*types.Asse
 	}
 
 	return &types.Asset{
-		ID:        strconv.FormatUint(asset.ID, 10),
+		ID:        strconv.FormatInt(asset.ID, 10),
 		CreatedAt: asset.CreatedAt,
 		LastSeen:  asset.LastSeen,
 		Asset:     assetData,
 	}, nil
+}
+
+// FindAssetByScope finds assets in the database by applying all the scope constraints provided and last seen after the since parameter.
+// It takes a slice representing the set of constraints to serve as the scope and retrieves the corresponding assets from the database.
+// If since.IsZero(), the parameter will be ignored.
+// Returns a slice of matching assets as []*types.Asset or an error if the search fails.
+func (sql *sqlRepository) FindAssetByScope(constraints []oam.Asset, since time.Time) ([]*types.Asset, error) {
+	var names []*types.Asset
+
+	for _, constraint := range constraints {
+		fqdn, ok := constraint.(domain.FQDN)
+		if !ok {
+			continue
+		}
+
+		var assets []Asset
+		var result *gorm.DB
+		if since.IsZero() {
+			result = sql.db.Where("type = ? AND content->>'name' LIKE ?", oam.FQDN, "%"+fqdn.Name).Find(&assets)
+		} else {
+			result = sql.db.Where("type = ? AND content->>'name' LIKE ? AND last_seen > ?", oam.FQDN, "%"+fqdn.Name, since).Find(&assets)
+		}
+		if result.Error != nil {
+			continue
+		}
+
+		for _, a := range assets {
+			if f, err := a.Parse(); err == nil {
+				names = append(names, &types.Asset{
+					ID:        strconv.FormatInt(a.ID, 10),
+					CreatedAt: a.CreatedAt,
+					LastSeen:  a.LastSeen,
+					Asset:     f,
+				})
+			}
+		}
+	}
+
+	if len(names) == 0 {
+		return []*types.Asset{}, errors.New("no assets in scope")
+	}
+	return names, nil
 }
 
 // FindAssetByType finds all assets in the database of the provided asset type and last seen after the since parameter.
@@ -295,7 +331,7 @@ func (sql *sqlRepository) FindAssetByType(atype oam.AssetType, since time.Time) 
 	for _, a := range assets {
 		if f, err := a.Parse(); err == nil {
 			results = append(results, &types.Asset{
-				ID:        strconv.FormatUint(a.ID, 10),
+				ID:        strconv.FormatInt(a.ID, 10),
 				CreatedAt: a.CreatedAt,
 				LastSeen:  a.LastSeen,
 				Asset:     f,
@@ -326,12 +362,12 @@ func (sql *sqlRepository) Link(source *types.Asset, relation string, destination
 		return rel, nil
 	}
 
-	fromAssetId, err := strconv.ParseUint(source.ID, 10, 64)
+	fromAssetId, err := strconv.ParseInt(source.ID, 10, 64)
 	if err != nil {
 		return &types.Relation{}, err
 	}
 
-	toAssetId, err := strconv.ParseUint(destination.ID, 10, 64)
+	toAssetId, err := strconv.ParseInt(destination.ID, 10, 64)
 	if err != nil {
 		return &types.Relation{}, err
 	}
@@ -450,15 +486,15 @@ func (sql *sqlRepository) relationById(id string) (*types.Relation, error) {
 // toRelation converts a database Relation to a types.Relation.
 func toRelation(r Relation) *types.Relation {
 	rel := &types.Relation{
-		ID:       strconv.FormatUint(r.ID, 10),
+		ID:       strconv.FormatInt(r.ID, 10),
 		Type:     r.Type,
 		LastSeen: r.LastSeen,
 		FromAsset: &types.Asset{
-			ID: strconv.FormatUint(r.FromAssetID, 10),
+			ID: strconv.FormatInt(r.FromAssetID, 10),
 			// Not joining to Asset to get Content
 		},
 		ToAsset: &types.Asset{
-			ID: strconv.FormatUint(r.ToAssetID, 10),
+			ID: strconv.FormatInt(r.ToAssetID, 10),
 			// Not joining to Asset to get Content
 		},
 	}
@@ -474,94 +510,4 @@ func toRelations(relations []Relation) []*types.Relation {
 	}
 
 	return res
-}
-
-// RayQuery creates a query and returns the slice of data returned.
-func (sql *sqlRepository) RawQuery(sqlstr string, results interface{}) error {
-	if result := sql.db.Raw(sqlstr).Scan(results); result.Error != nil {
-		return result.Error
-	}
-	return nil
-}
-
-// AssetQuery creates a query and returns the slice of Assets found.
-// The query will start with "SELECT assets.id, assets.create_at, assets.last_seen, assets.type, assets.content FROM "
-// and then add the provided constraints. The query much include the assets table and remain named assets for parsing.
-func (sql *sqlRepository) AssetQuery(constraints string) ([]*types.Asset, error) {
-	var ga []Asset
-
-	if constraints == "" {
-		constraints = "assets"
-	}
-
-	result := sql.db.Raw("SELECT assets.id, assets.created_at, assets.last_seen, assets.type, assets.content FROM " + constraints).Scan(&ga)
-	if result.Error != nil {
-		return nil, result.Error
-	}
-
-	var assets []*types.Asset
-	for _, a := range ga {
-		if asset, err := sql.gormAssetToAsset(&a); err == nil {
-			assets = append(assets, asset)
-		}
-	}
-	return assets, nil
-}
-
-func (sql *sqlRepository) gormAssetToAsset(ga *Asset) (*types.Asset, error) {
-	asset, err := ga.Parse()
-	if err != nil {
-		return &types.Asset{}, err
-	}
-
-	return &types.Asset{
-		ID:        strconv.FormatUint(ga.ID, 10),
-		CreatedAt: ga.CreatedAt,
-		LastSeen:  ga.LastSeen,
-		Asset:     asset,
-	}, nil
-}
-
-// RelationQuery creates a query and returns the slice of Relations found. The query will start with:
-// "SELECT relations.id, relations.create_at, relations.last_seen, relations.type, relations.from_asset_id, relations.to_asset_id FROM "
-// and then add the provided constraints. The query much include the relations table and remain named relations for parsing.
-func (sql *sqlRepository) RelationQuery(constraints string) ([]*types.Relation, error) {
-	var rs []*Relation
-
-	if constraints == "" {
-		constraints = "relations"
-	}
-
-	result := sql.db.Raw("SELECT relations.id, relations.created_at, relations.last_seen, relations.type, relations.from_asset_id, relations.to_asset_id FROM " + constraints).Scan(&rs)
-	if result.Error != nil {
-		return nil, result.Error
-	}
-
-	var relations []*types.Relation
-	for _, r := range rs {
-		if relation, err := sql.gormRelationToRelation(r); err == nil {
-			relations = append(relations, relation)
-		}
-	}
-	return relations, nil
-}
-
-func (sql *sqlRepository) gormRelationToRelation(gr *Relation) (*types.Relation, error) {
-	fromasset, err := sql.FindAssetById(strconv.FormatUint(gr.FromAssetID, 10), time.Time{})
-	if err != nil {
-		return nil, err
-	}
-	toasset, err := sql.FindAssetById(strconv.FormatUint(gr.ToAssetID, 10), time.Time{})
-	if err != nil {
-		return nil, err
-	}
-
-	return &types.Relation{
-		ID:        strconv.FormatUint(gr.ID, 10),
-		CreatedAt: gr.CreatedAt,
-		LastSeen:  gr.LastSeen,
-		Type:      gr.Type,
-		FromAsset: fromasset,
-		ToAsset:   toasset,
-	}, nil
 }
