@@ -7,6 +7,7 @@ require (
 	github.com/google/uuid v1.6.0
 	github.com/miekg/dns v1.1.73
 	github.com/owasp-amass/amass/v4 v4.2.0
+	github.com/owasp-amass/asset-db v0.3.9
 	github.com/owasp-amass/config v0.1.5
 	github.com/owasp-amass/open-asset-model v0.3.2
 	github.com/palantir/pkg/datetime v1.4.0
@@ -114,7 +115,6 @@ require (
 	github.com/muesli/termenv v0.16.0 // indirect
 	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 // indirect
 	github.com/ncruces/go-strftime v1.0.0 // indirect
-	github.com/owasp-amass/asset-db v0.3.9 // indirect
 	github.com/owasp-amass/resolve v0.6.21 // indirect
 	github.com/palantir/pkg v1.1.0 // indirect
 	github.com/palantir/pkg/bytesbuffers v1.3.0 // indirect

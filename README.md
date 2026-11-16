@@ -69,8 +69,12 @@ osintscan discover ip domain-asn --ip-addresses 8.8.8.8
 2. Generate your fern types with:
 
 ```bash
-fern generate --group local
+FERN_USE_SDK_GEN_API=false fern generate --group local
 ```
+
+The Fern Definition files in `fern/definition/` require the legacy hosted generation backend, selected by `FERN_USE_SDK_GEN_API=false`. Set this environment variable for Python generation and publishing too. With Docker running, `fern generate --group local --local` also works without the hosted backend.
+
+The Go generator is pinned to 1.71.0 because 2.x requires an OpenAPI source and SDK Config migration. The Python model generator is pinned to 1.11.2.
 
 3. Ensure dependencies are installed and tested with:
 

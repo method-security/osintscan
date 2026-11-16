@@ -3,6 +3,10 @@ name: 🎉 Release
 on:
   workflow_call:
 
+env:
+  # Fern Definitions require the legacy hosted generation backend.
+  FERN_USE_SDK_GEN_API: "false"
+
 jobs:
   release:
     name: Release

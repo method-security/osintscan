@@ -6,6 +6,10 @@ on:
 permissions:
   contents: read
 
+env:
+  # Fern Definitions require the legacy hosted generation backend.
+  FERN_USE_SDK_GEN_API: "false"
+
 jobs:
   test_fern_publish:
     name: Test Fern Python Publish
