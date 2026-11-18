@@ -30,7 +30,7 @@ func newSubfinderOpts(cfg dnsfern.DiscoverDnsSubdomainPassiveConfig) *runner.Opt
 		All:                cfg.AllSources,
 		Threads:            cfg.Threads,
 		Timeout:            120,
-		MaxEnumerationTime: 10,
+		MaxEnumerationTime: 30,
 		RateLimit:          cfg.RequestsPerSecond,
 	}
 }
