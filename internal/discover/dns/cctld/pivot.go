@@ -268,7 +268,7 @@ func processCandidateTLD(
 	// to the NS/MX lookups below.
 	dnsCtx, cancel := withDNSDeadline(ctx, config.Timeout)
 	defer cancel()
-	ips, lookupErr := resolver.LookupHost(dnsCtx, fqdn)
+	ips, lookupErr := resolver.LookupHost(dnsCtx, utils.AbsoluteLookupName(fqdn))
 	if lookupErr != nil && isDNSNotFound(lookupErr) {
 		// True NXDOMAIN: the name does not exist in DNS at all — skip.
 		return nil, ""
@@ -353,7 +353,7 @@ func detectCandidateWildcard(ctx context.Context, fqdn string, baseIPs []string,
 	}
 	randCtx, randCancel := withDNSDeadline(ctx, timeoutMs)
 	defer randCancel()
-	randomIPs, err := resolver.LookupHost(randCtx, randomFQDN)
+	randomIPs, err := resolver.LookupHost(randCtx, utils.AbsoluteLookupName(randomFQDN))
 	if err != nil || len(randomIPs) == 0 {
 		return false
 	}
@@ -386,7 +386,7 @@ func generateRandomLabel(domain string) (string, error) {
 func lookupNS(ctx context.Context, fqdn string, resolver *net.Resolver, timeoutMs int) []string {
 	c, cancel := withDNSDeadline(ctx, timeoutMs)
 	defer cancel()
-	nsList, err := resolver.LookupNS(c, fqdn)
+	nsList, err := resolver.LookupNS(c, utils.AbsoluteLookupName(fqdn))
 	if err != nil {
 		return nil
 	}
@@ -402,7 +402,7 @@ func lookupNS(ctx context.Context, fqdn string, resolver *net.Resolver, timeoutM
 func lookupMX(ctx context.Context, fqdn string, resolver *net.Resolver, timeoutMs int) []string {
 	c, cancel := withDNSDeadline(ctx, timeoutMs)
 	defer cancel()
-	mxList, err := resolver.LookupMX(c, fqdn)
+	mxList, err := resolver.LookupMX(c, utils.AbsoluteLookupName(fqdn))
 	if err != nil {
 		return nil
 	}

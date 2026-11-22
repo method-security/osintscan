@@ -13,6 +13,7 @@ import (
 
 	idpfern "github.com/Method-Security/osintscan/generated/go/discover/idp"
 	osintConfig "github.com/Method-Security/osintscan/internal/config"
+	"github.com/Method-Security/osintscan/utils"
 	"github.com/Method-Security/pkg/httpclient"
 	"github.com/palantir/witchcraft-go-logging/wlog/svclog/svc1log"
 )
@@ -347,7 +348,7 @@ func detectOkta(ctx context.Context, client *httpclient.Client, domain string, r
 	// Method 1: Check DNS CNAMEs for common SSO subdomains pointing to Okta
 	for _, prefix := range oktaSubdomainPrefixes {
 		subdomain := fmt.Sprintf("%s.%s", prefix, domain)
-		cname, err := net.LookupCNAME(subdomain)
+		cname, err := net.LookupCNAME(utils.AbsoluteLookupName(subdomain))
 		if err != nil {
 			continue
 		}

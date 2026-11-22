@@ -16,6 +16,7 @@ import (
 	"github.com/Method-Security/osintscan/configs"
 	dnsfern "github.com/Method-Security/osintscan/generated/go/enumerate/dns"
 	"github.com/Method-Security/osintscan/internal/config"
+	"github.com/Method-Security/osintscan/utils"
 )
 
 // RetrieveFingerprints retrieves the fingerprints defined in a JSON file from the given path.
@@ -114,7 +115,7 @@ func retrieveCNAMERecord(rawURL string) (string, string, bool, error) {
 	}
 
 	// Lookup the CNAME for the domain
-	cnameTarget, err := net.LookupCNAME(domain)
+	cnameTarget, err := net.LookupCNAME(utils.AbsoluteLookupName(domain))
 	if err != nil {
 		// This could be NXDOMAIN for the base domain itself
 		if dnsErr, ok := err.(*net.DNSError); ok {
@@ -126,7 +127,7 @@ func retrieveCNAMERecord(rawURL string) (string, string, bool, error) {
 	}
 
 	// Attempt to resolve the CNAME target (to see if it returns NXDOMAIN)
-	_, err = net.LookupHost(cnameTarget)
+	_, err = net.LookupHost(utils.AbsoluteLookupName(cnameTarget))
 	if err != nil {
 		if dnsErr, ok := err.(*net.DNSError); ok {
 			if isNXDomainError(dnsErr.Err) {
