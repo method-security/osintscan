@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"net/netip"
 	"strconv"
 	"strings"
 	"time"
@@ -37,6 +38,17 @@ func ValidateDNSServerAddress(address string) error {
 	}
 
 	return nil
+}
+
+// AbsoluteLookupName prevents DNS search suffixes from being applied to scan targets.
+func AbsoluteLookupName(name string) string {
+	if name == "" || strings.HasSuffix(name, ".") {
+		return name
+	}
+	if _, err := netip.ParseAddr(name); err == nil {
+		return name
+	}
+	return name + "."
 }
 
 // GetResolver returns a new resolver with the given DNS server address.

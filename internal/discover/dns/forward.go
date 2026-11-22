@@ -58,7 +58,7 @@ func getLookups(ctx context.Context, domain string, dnsResolvers []string) ([]*d
 		svc1log.SafeParam("domain", domain))
 
 	// Resolve the IP addresses for the given FQDN (forward lookup)
-	ips, err := resolver.LookupHost(ctx, domain)
+	ips, err := resolver.LookupHost(ctx, utils.AbsoluteLookupName(domain))
 	if err != nil {
 		log.Warn("DNS lookup failed",
 			svc1log.SafeParam("domain", domain),

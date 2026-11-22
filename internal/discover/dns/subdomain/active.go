@@ -187,7 +187,7 @@ func testPermutations(ctx context.Context, permutations []string, resolvers []*n
 
 			// Capture the duration of the lookup
 			start := time.Now()
-			_, err := resolver.LookupHost(ctx, testSubdomain)
+			_, err := resolver.LookupHost(ctx, utils.AbsoluteLookupName(testSubdomain))
 			// If LookupHost fails (no A/AAAA record), check for CNAME records
 			// via a raw DNS query. Go's net.LookupCNAME follows the CNAME chain
 			// and fails if the target doesn't resolve, so it can't detect dangling

@@ -126,7 +126,7 @@ func resolveDomain(ctx context.Context, domain string, dnsResolvers []string) ([
 		resolverAddress = utils.NormalizeDNSAddress(dnsResolvers[resolverIndex])
 	}
 
-	ips, err := resolver.LookupHost(ctx, domain)
+	ips, err := resolver.LookupHost(ctx, utils.AbsoluteLookupName(domain))
 	if err != nil {
 		var dnsErr *net.DNSError
 		if errors.As(err, &dnsErr) {
