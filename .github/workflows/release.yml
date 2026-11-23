@@ -61,6 +61,11 @@ jobs:
               raise RuntimeError("Unexpected generated Python package metadata")
           content = content.replace("Repository = ''", 'Repository = "https://github.com/method-security/osintscan"')
           path.write_text(content)
+          path.with_name("README.md").write_text(
+              "# " + os.environ["PACKAGE_NAME"] + "\n\n"
+              "Python data models generated from the "
+              "[Method Security osintscan definitions](https://github.com/method-security/osintscan).\n"
+          )
           PYTHON
           python3 -m build --outdir generated/python-dist generated/python-package/fern-pydantic-model
           python3 -m twine check generated/python-dist/*
