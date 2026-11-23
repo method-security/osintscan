@@ -1,9 +1,11 @@
 package goquery
 
 import (
+	"slices"
 	"strings"
 
 	"golang.org/x/net/html"
+	"golang.org/x/net/html/atom"
 )
 
 // After applies the selector from the root document and inserts the matched elements
@@ -166,8 +168,16 @@ func (s *Selection) Clone() *Selection {
 // Empty removes all children nodes from the set of matched elements.
 // It returns the children nodes in a new Selection.
 func (s *Selection) Empty() *Selection {
-	var nodes []*html.Node
+	// Count the children first so nodes can be presized, avoiding append's
+	// repeated reallocations.
+	count := 0
+	for _, n := range s.Nodes {
+		for c := n.FirstChild; c != nil; c = c.NextSibling {
+			count++
+		}
+	}
 
+	nodes := make([]*html.Node, 0, count)
 	for _, n := range s.Nodes {
 		for c := n.FirstChild; c != nil; c = n.FirstChild {
 			n.RemoveChild(c)
@@ -374,20 +384,14 @@ func (s *Selection) WrapSelection(sel *Selection) *Selection {
 //
 // It returns the original set of elements.
 func (s *Selection) WrapHtml(htmlStr string) *Selection {
-	nodesMap := make(map[string][]*html.Node)
-	for _, context := range s.Nodes {
-		var parent *html.Node
-		if context.Parent != nil {
-			parent = context.Parent
-		} else {
+	cache := make(map[string][]*html.Node)
+	for _, n := range s.Nodes {
+		parent := n.Parent
+		if parent == nil {
 			parent = &html.Node{Type: html.ElementNode}
 		}
-		nodes, found := nodesMap[nodeName(parent)]
-		if !found {
-			nodes = parseHtmlWithContext(htmlStr, parent)
-			nodesMap[nodeName(parent)] = nodes
-		}
-		newSingleSelection(context, s.document).wrapAllNodes(cloneNodes(nodes)...)
+		nodes := cachedParseHtmlWithContext(cache, htmlStr, parent, s.parseOpts())
+		newSingleSelection(n, s.document).wrapAllNodes(cloneNodes(nodes)...)
 	}
 	return s
 }
@@ -447,9 +451,9 @@ func (s *Selection) WrapAllHtml(htmlStr string) *Selection {
 	if len(s.Nodes) > 0 {
 		context = s.Nodes[0]
 		if context.Parent != nil {
-			nodes = parseHtmlWithContext(htmlStr, context)
+			nodes = parseHtmlWithContext(htmlStr, context, s.parseOpts())
 		} else {
-			nodes = parseHtml(htmlStr)
+			nodes = parseHtml(htmlStr, s.parseOpts())
 		}
 	}
 	return s.wrapAllNodes(nodes...)
@@ -522,14 +526,10 @@ func (s *Selection) WrapInnerSelection(sel *Selection) *Selection {
 //
 // It returns the original set of elements.
 func (s *Selection) WrapInnerHtml(htmlStr string) *Selection {
-	nodesMap := make(map[string][]*html.Node)
-	for _, context := range s.Nodes {
-		nodes, found := nodesMap[nodeName(context)]
-		if !found {
-			nodes = parseHtmlWithContext(htmlStr, context)
-			nodesMap[nodeName(context)] = nodes
-		}
-		newSingleSelection(context, s.document).wrapInnerNodes(cloneNodes(nodes)...)
+	cache := make(map[string][]*html.Node)
+	for _, n := range s.Nodes {
+		nodes := cachedParseHtmlWithContext(cache, htmlStr, n, s.parseOpts())
+		newSingleSelection(n, s.document).wrapInnerNodes(cloneNodes(nodes)...)
 	}
 	return s
 }
@@ -561,20 +561,23 @@ func (s *Selection) wrapInnerNodes(ns ...*html.Node) *Selection {
 	return s
 }
 
-func parseHtml(h string) []*html.Node {
-	// Errors are only returned when the io.Reader returns any error besides
-	// EOF, but strings.Reader never will
-	nodes, err := html.ParseFragment(strings.NewReader(h), &html.Node{Type: html.ElementNode})
-	if err != nil {
-		panic("goquery: failed to parse HTML: " + err.Error())
+// parseOpts returns the parse options of the document this selection belongs to,
+// so an HTML string added later is parsed the same way the document was.
+func (s *Selection) parseOpts() []html.ParseOption {
+	if s == nil || s.document == nil {
+		return nil
 	}
-	return nodes
+	return s.document.parseOptions
 }
 
-func parseHtmlWithContext(h string, context *html.Node) []*html.Node {
+func parseHtml(h string, opts []html.ParseOption) []*html.Node {
+	return parseHtmlWithContext(h, &html.Node{Type: html.ElementNode}, opts)
+}
+
+func parseHtmlWithContext(h string, context *html.Node, opts []html.ParseOption) []*html.Node {
 	// Errors are only returned when the io.Reader returns any error besides
 	// EOF, but strings.Reader never will
-	nodes, err := html.ParseFragment(strings.NewReader(h), context)
+	nodes, err := html.ParseFragmentWithOptions(strings.NewReader(h), context, opts...)
 	if err != nil {
 		panic("goquery: failed to parse HTML: " + err.Error())
 	}
@@ -605,10 +608,11 @@ func cloneNodes(ns []*html.Node) []*html.Node {
 // children but none of its parents or siblings.
 func cloneNode(n *html.Node) *html.Node {
 	nn := &html.Node{
-		Type:     n.Type,
-		DataAtom: n.DataAtom,
-		Data:     n.Data,
-		Attr:     make([]html.Attribute, len(n.Attr)),
+		Type:      n.Type,
+		DataAtom:  n.DataAtom,
+		Data:      n.Data,
+		Namespace: n.Namespace,
+		Attr:      make([]html.Attribute, len(n.Attr)),
 	}
 
 	copy(nn.Attr, n.Attr)
@@ -626,11 +630,11 @@ func (s *Selection) manipulateNodes(ns []*html.Node, reverse bool,
 
 	// net.Html doesn't provide document fragments for insertion, so to get
 	// things in the correct order with After() and Prepend(), the callback
-	// needs to be called on the reverse of the nodes.
+	// needs to be called on the reverse of the nodes. Clone the slice before
+	// reversing so the caller's slice is not modified.
 	if reverse {
-		for i, j := 0, len(ns)-1; i < j; i, j = i+1, j-1 {
-			ns[i], ns[j] = ns[j], ns[i]
-		}
+		ns = slices.Clone(ns)
+		slices.Reverse(ns)
 	}
 
 	for i, sn := range s.Nodes {
@@ -654,10 +658,9 @@ func (s *Selection) manipulateNodes(ns []*html.Node, reverse bool,
 // isParent can be used to indicate that the elements of the selection should be treated as the parent for the parsed html.
 // A cache is used to avoid parsing the html multiple times should the elements of the selection result in the same context.
 func (s *Selection) eachNodeHtml(htmlStr string, isParent bool, mergeFn func(n *html.Node, nodes []*html.Node)) *Selection {
-	// cache to avoid parsing the html for the same context multiple times
-	nodeCache := make(map[string][]*html.Node)
-	var context *html.Node
+	cache := make(map[string][]*html.Node)
 	for _, n := range s.Nodes {
+		var context *html.Node
 		if isParent {
 			context = n.Parent
 		} else {
@@ -666,14 +669,39 @@ func (s *Selection) eachNodeHtml(htmlStr string, isParent bool, mergeFn func(n *
 			}
 			context = n
 		}
-		if context != nil {
-			nodes, found := nodeCache[nodeName(context)]
-			if !found {
-				nodes = parseHtmlWithContext(htmlStr, context)
-				nodeCache[nodeName(context)] = nodes
-			}
-			mergeFn(n, cloneNodes(nodes))
+		if context == nil {
+			continue
 		}
+		nodes := cachedParseHtmlWithContext(cache, htmlStr, context, s.parseOpts())
+		mergeFn(n, cloneNodes(nodes))
 	}
 	return s
+}
+
+// hasFormAncestor reports whether n or any of its ancestors is an HTML form element.
+// This mirrors the logic in net/html.ParseFragmentWithOptions, which initializes its
+// form pointer from context and its ancestor chain.
+func hasFormAncestor(n *html.Node) bool {
+	for ; n != nil; n = n.Parent {
+		if n.Type == html.ElementNode && (n.DataAtom == atom.Form || n.Data == "form") {
+			return true
+		}
+	}
+	return false
+}
+
+// cachedParseHtmlWithContext returns parseHtmlWithContext(htmlStr, context), reusing a prior
+// result when context's nodeName has already been seen with the same form ancestor state.
+// Callers pass their own cache map so the cache lifetime matches the caller's loop scope.
+func cachedParseHtmlWithContext(cache map[string][]*html.Node, htmlStr string, context *html.Node, opts []html.ParseOption) []*html.Node {
+	key := nodeName(context)
+	if hasFormAncestor(context) {
+		key += ":form"
+	}
+	if nodes, ok := cache[key]; ok {
+		return nodes
+	}
+	nodes := parseHtmlWithContext(htmlStr, context, opts)
+	cache[key] = nodes
+	return nodes
 }

@@ -130,13 +130,23 @@ func Xpthread_create(tls *TLS, res, attrp, entry, arg uintptr) int32 {
 	}
 	tls2 := NewTLS()
 	tls2.ownsPthread = false
-	*(*Tpthread_t)(unsafe.Pointer(res)) = tls2.pthread
-	(*t__pthread)(unsafe.Pointer(tls2.pthread)).Fdetach_state = detachState
-	if detachState == _DT_JOINABLE {
-		(*sync.Mutex)(unsafe.Pointer(tls2.pthread + unsafe.Offsetof(t__pthread{}.F__ccgo_join_mutex))).Lock()
-	}
+	tls2.started = true
+	p := tls2.pthread
+	(*t__pthread)(unsafe.Pointer(p)).Fdetach_state = detachState
+	pthreadJoinsMu.Lock()
+	pthreadJoins[p] = &pthreadJoin{done: make(chan struct{}), detached: detachState == _DT_DETACHED}
+	pthreadJoinsMu.Unlock()
+	*(*Tpthread_t)(unsafe.Pointer(res)) = p
 
 	go func() {
+		// Xpthread_exit ends in runtime.Goexit, which runs the deferred calls
+		// of the thread's frames. They still use its TLS, so it is closed only
+		// after them, and only then does the thread count as exited.
+		defer func() {
+			tls2.Close() // keeps *p, see ownsPthread
+			pthreadExited(p)
+		}()
+
 		Xpthread_exit(tls2, (*(*func(*TLS, uintptr) uintptr)(unsafe.Pointer(&struct{ uintptr }{entry})))(tls2, arg))
 	}()
 
@@ -174,23 +184,76 @@ func Xpthread_exit(tls *TLS, result uintptr) {
 			break
 		}
 	}
-	mu := (*sync.Mutex)(unsafe.Pointer(tls.pthread + unsafe.Offsetof(t__pthread{}.F__ccgo_join_mutex)))
-	mu.TryLock()
-	mu.Unlock()
-	atomic.StoreInt32((*int32)(unsafe.Pointer(tls.pthread+unsafe.Offsetof(t__pthread{}.Fdetach_state))), _DT_EXITED)
-	tls.Close()
+	// A TLS not made by Xpthread_create is not ours to close. Whoever made it
+	// closes it, possibly in one of the deferred calls runtime.Goexit runs.
+	// Such a thread cannot be joined, see pthreadJoins.
 	runtime.Goexit()
 }
 
-func Xpthread_join(tls *TLS, t Tpthread_t, res uintptr) (r int32) {
-	if (*t__pthread)(unsafe.Pointer(t)).Fdetach_state > _DT_JOINABLE {
-		return EINVAL
+// pthreadJoins has an entry for every thread started by Xpthread_create, keyed
+// by its pthread_t, until its t__pthread is freed. As in musl, the t__pthread of
+// a joinable thread outlives the thread, so that its pthread_t stays valid and
+// unique until Xpthread_join or Xpthread_detach frees it. A detached thread frees
+// its own when it exits. Joining is done here and not with a lock in the
+// t__pthread: the freeing joiner could return from Lock while the exiting thread
+// is still in Unlock, touching freed memory.
+var (
+	pthreadJoinsMu sync.Mutex
+	pthreadJoins   = map[uintptr]*pthreadJoin{}
+)
+
+type pthreadJoin struct {
+	done     chan struct{} // closed when a joinable thread has exited
+	detached bool          // guarded by pthreadJoinsMu
+	exited   bool          // guarded by pthreadJoinsMu
+}
+
+// pthreadExited ends the thread of p, started by Xpthread_create, once it has
+// fully unwound and its TLS is closed. A detached thread frees its t__pthread,
+// a joinable one releases its joiner.
+func pthreadExited(p uintptr) {
+	pthreadJoinsMu.Lock()
+
+	defer pthreadJoinsMu.Unlock()
+
+	j := pthreadJoins[p]
+	if j.detached {
+		delete(pthreadJoins, p)
+		Xfree(nil, p)
+		return
 	}
 
-	(*sync.Mutex)(unsafe.Pointer(t + unsafe.Offsetof(t__pthread{}.F__ccgo_join_mutex))).Lock()
+	atomic.StoreInt32((*int32)(unsafe.Pointer(p+unsafe.Offsetof(t__pthread{}.Fdetach_state))), _DT_EXITED)
+	j.exited = true
+	close(j.done)
+}
+
+// Xpthread_join waits for the joinable thread t, started by Xpthread_create, to
+// exit and frees its t__pthread. Joining a detached thread fails with EINVAL,
+// joining any other thread, or one that was already joined, with ESRCH.
+func Xpthread_join(tls *TLS, t Tpthread_t, res uintptr) (r int32) {
+	pthreadJoinsMu.Lock()
+	j := pthreadJoins[t]
+	r = ESRCH
+	if j != nil {
+		r = 0
+		if j.detached {
+			r = EINVAL
+		}
+	}
+	pthreadJoinsMu.Unlock()
+	if r != 0 {
+		return r
+	}
+
+	<-j.done
 	if res != 0 {
 		*(*uintptr)(unsafe.Pointer(res)) = (*t__pthread)(unsafe.Pointer(t)).Fresult
 	}
+	pthreadJoinsMu.Lock()
+	delete(pthreadJoins, t)
+	pthreadJoinsMu.Unlock()
+	Xfree(tls, t)
 	return 0
 }
 
@@ -304,6 +367,25 @@ func Xpthread_mutex_lock(tls *TLS, m uintptr) int32 {
 
 			(*pthreadMutex)(unsafe.Pointer(m)).Unlock()
 		}
+	case PTHREAD_MUTEX_ERRORCHECK:
+		// Like RECURSIVE, without the count, and relocking is an error.
+		if atomic.LoadInt32(&((*pthreadMutex)(unsafe.Pointer(m)).owner)) == tls.ID {
+			return EDEADLK
+		}
+
+		if atomic.CompareAndSwapInt32(&((*pthreadMutex)(unsafe.Pointer(m)).owner), 0, tls.ID) {
+			(*pthreadMutex)(unsafe.Pointer(m)).Lock()
+			return 0
+		}
+
+		for {
+			(*pthreadMutex)(unsafe.Pointer(m)).Lock()
+			if atomic.CompareAndSwapInt32(&((*pthreadMutex)(unsafe.Pointer(m)).owner), 0, tls.ID) {
+				return 0
+			}
+
+			(*pthreadMutex)(unsafe.Pointer(m)).Unlock()
+		}
 	default:
 		panic(todo("", typ))
 	}
@@ -313,6 +395,30 @@ func Xpthread_mutex_trylock(tls *TLS, m uintptr) int32 {
 	switch typ := (*pthreadMutex)(unsafe.Pointer(m)).typ; typ {
 	case PTHREAD_MUTEX_NORMAL:
 		if (*pthreadMutex)(unsafe.Pointer(m)).TryLock() {
+			return 0
+		}
+
+		return EBUSY
+	case PTHREAD_MUTEX_RECURSIVE:
+		if atomic.LoadInt32(&((*pthreadMutex)(unsafe.Pointer(m)).owner)) == tls.ID {
+			atomic.AddInt32(&((*pthreadMutex)(unsafe.Pointer(m)).count), 1)
+			return 0
+		}
+
+		// The owner field is the lock. As in Xpthread_mutex_lock, the embedded
+		// sync.Mutex is held only while owned, and briefly by unlock and by the
+		// loop in lock, so after the CAS Lock does not wait for another owner.
+		if atomic.CompareAndSwapInt32(&((*pthreadMutex)(unsafe.Pointer(m)).owner), 0, tls.ID) {
+			atomic.StoreInt32(&((*pthreadMutex)(unsafe.Pointer(m)).count), 1)
+			(*pthreadMutex)(unsafe.Pointer(m)).Lock()
+			return 0
+		}
+
+		return EBUSY
+	case PTHREAD_MUTEX_ERRORCHECK:
+		// EBUSY whoever holds it, the caller included.
+		if atomic.CompareAndSwapInt32(&((*pthreadMutex)(unsafe.Pointer(m)).owner), 0, tls.ID) {
+			(*pthreadMutex)(unsafe.Pointer(m)).Lock()
 			return 0
 		}
 
@@ -336,6 +442,14 @@ func Xpthread_mutex_unlock(tls *TLS, m uintptr) int32 {
 			atomic.StoreInt32(&((*pthreadMutex)(unsafe.Pointer(m)).owner), 0)
 			(*pthreadMutex)(unsafe.Pointer(m)).Unlock()
 		}
+		return 0
+	case PTHREAD_MUTEX_ERRORCHECK:
+		if atomic.LoadInt32(&((*pthreadMutex)(unsafe.Pointer(m)).owner)) != tls.ID {
+			return EPERM
+		}
+
+		atomic.StoreInt32(&((*pthreadMutex)(unsafe.Pointer(m)).owner), 0)
+		(*pthreadMutex)(unsafe.Pointer(m)).Unlock()
 		return 0
 	default:
 		panic(todo("", typ))
@@ -400,15 +514,22 @@ func Xpthread_cond_timedwait(tls *TLS, c, m, ts uintptr) (r int32) {
 	}()
 
 	switch typ := (*pthreadMutex)(unsafe.Pointer(m)).typ; typ {
-	case PTHREAD_MUTEX_NORMAL:
-		(*pthreadMutex)(unsafe.Pointer(m)).Unlock()
+	case PTHREAD_MUTEX_NORMAL, PTHREAD_MUTEX_RECURSIVE, PTHREAD_MUTEX_ERRORCHECK:
+		// A recursive mutex releases one level, like musl's own
+		// pthread_cond_timedwait, so one locked more than once stays held
+		// while waiting (#62). Unlocking a RECURSIVE or ERRORCHECK mutex the
+		// caller does not hold reports EPERM, which the wait then returns.
+		if r = Xpthread_mutex_unlock(tls, m); r != 0 {
+			return r
+		}
+
 		select {
 		case <-ch:
 			// ok
 		case <-to:
 			r = ETIMEDOUT
 		}
-		(*pthreadMutex)(unsafe.Pointer(m)).Lock()
+		Xpthread_mutex_lock(tls, m)
 		return r
 	default:
 		panic(todo("", typ))
@@ -474,14 +595,32 @@ func Xpthread_mutexattr_settype(tls *TLS, a uintptr, typ int32) int32 {
 	return 0
 }
 
+// Xpthread_detach detaches the thread t. If t was started by Xpthread_create and
+// has already exited, its t__pthread is freed now, otherwise when it exits, see
+// pthreadJoins. A thread not started by Xpthread_create can only detach itself,
+// its TLS keeps owning its t__pthread. Detaching any other thread, or one that
+// was joined or has exited detached, fails with ESRCH.
 func Xpthread_detach(tls *TLS, t uintptr) int32 {
-	state := atomic.SwapInt32((*int32)(unsafe.Pointer(t+unsafe.Offsetof(t__pthread{}.Fdetach_state))), _DT_DETACHED)
-	switch state {
-	case _DT_JOINABLE, _DT_EXITED, _DT_DETACHED:
-		return 0
+	pthreadJoinsMu.Lock()
+
+	defer pthreadJoinsMu.Unlock()
+
+	state := (*int32)(unsafe.Pointer(t + unsafe.Offsetof(t__pthread{}.Fdetach_state)))
+	switch j := pthreadJoins[t]; {
+	case j == nil:
+		if t != tls.pthread {
+			return ESRCH
+		}
+
+		atomic.StoreInt32(state, _DT_DETACHED)
+	case j.exited:
+		delete(pthreadJoins, t)
+		Xfree(tls, t)
 	default:
-		panic(todo("", tls.ID, state))
+		j.detached = true
+		atomic.StoreInt32(state, _DT_DETACHED)
 	}
+	return 0
 }
 
 // int pthread_equal(pthread_t, pthread_t);
