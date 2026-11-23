@@ -1,4 +1,4 @@
-// Copyright © by Jeff Foley 2017-2024. All rights reserved.
+// Copyright © by Jeff Foley 2017-2026. All rights reserved.
 // Use of this source code is governed by Apache 2 LICENSE that can be found in the LICENSE file.
 // SPDX-License-Identifier: Apache-2.0
 
@@ -21,19 +21,19 @@ const (
 // Queue implements a FIFO data structure that can support a few priorities.
 type Queue interface {
 	// Append adds the data to the Queue at priority level PriorityNormal.
-	Append(data interface{})
+	Append(data any)
 
 	// AppendPriority adds the data to the Queue with respect to priority.
-	AppendPriority(data interface{}, priority QueuePriority)
+	AppendPriority(data any, priority QueuePriority)
 
 	// Signal returns the Queue signal channel.
 	Signal() <-chan struct{}
 
 	// Next returns the data at the front of the Queue.
-	Next() (interface{}, bool)
+	Next() (any, bool)
 
 	// Process will execute the callback parameter for each element on the Queue.
-	Process(callback func(interface{}))
+	Process(callback func(any))
 
 	// Empty returns true if the Queue is empty.
 	Empty() bool
@@ -45,10 +45,10 @@ type Queue interface {
 type queue struct {
 	sync.Mutex
 	signal chan struct{}
-	low    []interface{}
-	norm   []interface{}
-	high   []interface{}
-	crit   []interface{}
+	low    []any
+	norm   []any
+	high   []any
+	crit   []any
 }
 
 // NewQueue returns an initialized Queue.
@@ -57,16 +57,16 @@ func NewQueue() Queue {
 }
 
 // Append implements the Queue interface.
-func (q *queue) Append(data interface{}) {
+func (q *queue) Append(data any) {
 	q.append(data, PriorityNormal)
 }
 
 // AppendPriority implements the Queue interface.
-func (q *queue) AppendPriority(data interface{}, priority QueuePriority) {
+func (q *queue) AppendPriority(data any, priority QueuePriority) {
 	q.append(data, priority)
 }
 
-func (q *queue) append(data interface{}, priority QueuePriority) {
+func (q *queue) append(data any, priority QueuePriority) {
 	q.Lock()
 	defer q.Unlock()
 
@@ -126,22 +126,26 @@ func (q *queue) drain() {
 }
 
 // Next implements the Queue interface.
-func (q *queue) Next() (interface{}, bool) {
+func (q *queue) Next() (any, bool) {
 	q.Lock()
 	defer q.Unlock()
 
-	var data interface{}
+	var data any
 	if len(q.crit) > 0 {
 		data = q.crit[0]
+		q.crit[0] = nil // prevent memory leak
 		q.crit = q.crit[1:]
 	} else if len(q.high) > 0 {
 		data = q.high[0]
+		q.high[0] = nil
 		q.high = q.high[1:]
 	} else if len(q.norm) > 0 {
 		data = q.norm[0]
+		q.norm[0] = nil
 		q.norm = q.norm[1:]
 	} else if len(q.low) > 0 {
 		data = q.low[0]
+		q.low[0] = nil
 		q.low = q.low[1:]
 	} else {
 		q.drain()
@@ -153,7 +157,7 @@ func (q *queue) Next() (interface{}, bool) {
 }
 
 // Process implements the Queue interface.
-func (q *queue) Process(callback func(interface{})) {
+func (q *queue) Process(callback func(any)) {
 	element, ok := q.Next()
 
 	for ok {

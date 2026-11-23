@@ -15,6 +15,7 @@ package libc // import "modernc.org/libc"
 
 import (
 	"bufio"
+	"bytes"
 	crand "crypto/rand"
 	"fmt"
 	"math"
@@ -23,7 +24,6 @@ import (
 	"os"
 	"runtime"
 	"runtime/debug"
-	"sort"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -52,8 +52,6 @@ var (
 	allocMu            sync.Mutex
 	environInitialized bool
 	isWindows          bool
-	ungetcMu           sync.Mutex
-	ungetc             = map[uintptr]byte{}
 )
 
 // Keep these outside of the var block otherwise go generate will miss them.
@@ -732,8 +730,6 @@ func X__builtin_object_size(t *TLS, p uintptr, typ int32) types.Size_t {
 	}
 }
 
-var atomicLoadStore16 sync.Mutex
-
 func AtomicStoreNUint8(ptr uintptr, val uint8, memorder int32) {
 	a_store_8(ptr, val)
 }
@@ -769,15 +765,7 @@ func Xqsort(t *TLS, base uintptr, nmemb, size types.Size_t, compar uintptr) {
 	if __ccgo_strace {
 		trc("t=%v base=%v size=%v compar=%v, (%v:)", t, base, size, compar, origin(2))
 	}
-	sort.Sort(&sorter{
-		len:  int(nmemb),
-		base: base,
-		sz:   uintptr(size),
-		f: (*struct {
-			f func(*TLS, uintptr, uintptr) int32
-		})(unsafe.Pointer(&struct{ uintptr }{compar})).f,
-		t: t,
-	})
+	qsort(t, base, uintptr(nmemb), uintptr(size), compar)
 }
 
 // void __assert_fail(const char * assertion, const char * file, unsigned int line, const char * function);
@@ -995,6 +983,36 @@ func Xllabs(tls *TLS, a int64) int64 {
 	}
 
 	return -a
+}
+
+// Tdiv_t is C's div_t.
+type Tdiv_t = struct {
+	Fquot int32
+	Frem  int32
+}
+
+// Tldiv_t is C's ldiv_t.
+type Tldiv_t = struct {
+	Fquot long
+	Frem  long
+}
+
+// div_t div(int num, int den);
+func Xdiv(tls *TLS, num, den int32) (r Tdiv_t) {
+	if __ccgo_strace {
+		trc("tls=%v num=%v den=%v, (%v:)", tls, num, den, origin(2))
+		defer func() { trc("-> %v", r) }()
+	}
+	return Tdiv_t{Fquot: num / den, Frem: num % den}
+}
+
+// ldiv_t ldiv(long num, long den);
+func Xldiv(tls *TLS, num, den long) (r Tldiv_t) {
+	if __ccgo_strace {
+		trc("tls=%v num=%v den=%v, (%v:)", tls, num, den, origin(2))
+		defer func() { trc("-> %v", r) }()
+	}
+	return Tldiv_t{Fquot: num / den, Frem: num % den}
 }
 
 func X__builtin_isnan(t *TLS, x float64) int32 {
@@ -1727,18 +1745,11 @@ func Xstrncpy(t *TLS, dest, src uintptr, n types.Size_t) (r uintptr) {
 		trc("t=%v src=%v n=%v, (%v:)", t, src, n, origin(2))
 		defer func() { trc("-> %v", r) }()
 	}
-	r = dest
-	for c := *(*int8)(unsafe.Pointer(src)); c != 0 && n > 0; n-- {
-		*(*int8)(unsafe.Pointer(dest)) = c
-		dest++
-		src++
-		c = *(*int8)(unsafe.Pointer(src))
-	}
-	for ; uintptr(n) > 0; n-- {
-		*(*int8)(unsafe.Pointer(dest)) = 0
-		dest++
-	}
-	return r
+	k := strnlen(src, n)
+	d := unsafe.Slice((*byte)(unsafe.Pointer(dest)), n)
+	copy(d, unsafe.Slice((*byte)(unsafe.Pointer(src)), k))
+	clear(d[k:])
+	return dest
 }
 
 // char * __builtin___strncpy_chk (char *dest, const char *src, size_t n, size_t os);
@@ -1829,15 +1840,19 @@ func Xstrcpy(t *TLS, dest, src uintptr) (r uintptr) {
 		defer func() { trc("-> %v", r) }()
 	}
 	r = dest
-	// src0 := src
-	for ; ; dest++ {
-		c := *(*int8)(unsafe.Pointer(src))
-		src++
-		*(*int8)(unsafe.Pointer(dest)) = c
+	// Short strings are cheaper to copy bytewise than to scan twice.
+	for i := 0; i < 16; i++ {
+		c := *(*byte)(unsafe.Pointer(src + uintptr(i)))
+		*(*byte)(unsafe.Pointer(dest + uintptr(i))) = c
 		if c == 0 {
 			return r
 		}
 	}
+	dest += 16
+	src += 16
+	n := strlen(src) + 1
+	copy(unsafe.Slice((*byte)(unsafe.Pointer(dest)), n), unsafe.Slice((*byte)(unsafe.Pointer(src)), n))
+	return r
 }
 
 // char *strchr(const char *s, int c)
@@ -1845,18 +1860,25 @@ func Xstrchr(t *TLS, s uintptr, c int32) uintptr {
 	if __ccgo_strace {
 		trc("t=%v s=%v c=%v, (%v:)", t, s, c, origin(2))
 	}
-	for {
-		ch2 := *(*byte)(unsafe.Pointer(s))
-		if ch2 == byte(c) {
+	// Short strings are cheaper to scan bytewise than twice.
+	for i := 0; i < 16; i++ {
+		ch := *(*byte)(unsafe.Pointer(s))
+		if ch == byte(c) {
 			return s
 		}
 
-		if ch2 == 0 {
+		if ch == 0 {
 			return 0
 		}
 
 		s++
 	}
+	// The scan includes the NUL so that c == 0 finds the terminator.
+	if i := bytes.IndexByte(unsafe.Slice((*byte)(unsafe.Pointer(s)), strlen(s)+1), byte(c)); i >= 0 {
+		return s + uintptr(i)
+	}
+
+	return 0
 }
 
 // char *strrchr(const char *s, int c)
@@ -1865,17 +1887,12 @@ func Xstrrchr(t *TLS, s uintptr, c int32) (r uintptr) {
 		trc("t=%v s=%v c=%v, (%v:)", t, s, c, origin(2))
 		defer func() { trc("-> %v", r) }()
 	}
-	for {
-		ch2 := *(*byte)(unsafe.Pointer(s))
-		if ch2 == 0 {
-			return r
-		}
-
-		if ch2 == byte(c) {
-			r = s
-		}
-		s++
+	// the terminating NUL is part of the string and matches c == 0
+	n := Xstrlen(t, s)
+	if i := bytes.LastIndexByte(unsafe.Slice((*byte)(unsafe.Pointer(s)), n+1), byte(c)); i >= 0 {
+		return s + uintptr(i)
 	}
+	return 0
 }
 
 // void *memset(void *s, int c, size_t n)
@@ -1983,20 +2000,7 @@ func Xmemcmp(t *TLS, s1, s2 uintptr, n types.Size_t) int32 {
 	if __ccgo_strace {
 		trc("t=%v s2=%v n=%v, (%v:)", t, s2, n, origin(2))
 	}
-	for ; n != 0; n-- {
-		c1 := *(*byte)(unsafe.Pointer(s1))
-		s1++
-		c2 := *(*byte)(unsafe.Pointer(s2))
-		s2++
-		if c1 < c2 {
-			return -1
-		}
-
-		if c1 > c2 {
-			return 1
-		}
-	}
-	return 0
+	return memcmp(s1, s2, Tsize_t(n))
 }
 
 // void *memchr(const void *s, int c, size_t n);
@@ -2004,12 +2008,16 @@ func Xmemchr(t *TLS, s uintptr, c int32, n types.Size_t) uintptr {
 	if __ccgo_strace {
 		trc("t=%v s=%v c=%v n=%v, (%v:)", t, s, c, n, origin(2))
 	}
-	for ; n != 0; n-- {
-		if *(*byte)(unsafe.Pointer(s)) == byte(c) {
-			return s
+	// Scan in chunks that end at 4096-byte boundaries so n larger than the
+	// object (up to SIZE_MAX) never reads a page past the first match.
+	for n != 0 {
+		chunk := min(4096-s%4096, uintptr(n))
+		if i := bytes.IndexByte(unsafe.Slice((*byte)(unsafe.Pointer(s)), chunk), byte(c)); i >= 0 {
+			return s + uintptr(i)
 		}
 
-		s++
+		s += chunk
+		n -= types.Size_t(chunk)
 	}
 	return 0
 }
@@ -2054,14 +2062,9 @@ func getenv(p uintptr, nm string) uintptr {
 			return 0
 		}
 
-		s := GoString(q)
-		a := strings.SplitN(s, "=", 2)
-		if len(a) != 2 {
-			panic(todo("%q %q %q", nm, s, a))
-		}
-
-		if a[0] == nm {
-			return q + uintptr(len(nm)) + 1
+		// compare in place, the environment is scanned on every localtime call
+		if n := cstrPrefix(q, nm); n == len(nm) && *(*byte)(unsafe.Pointer(q + uintptr(n))) == '=' {
+			return q + uintptr(n) + 1
 		}
 	}
 }
@@ -2071,11 +2074,10 @@ func Xstrstr(t *TLS, haystack, needle uintptr) uintptr {
 	if __ccgo_strace {
 		trc("t=%v needle=%v, (%v:)", t, needle, origin(2))
 	}
-	hs := GoString(haystack)
-	nd := GoString(needle)
-	if i := strings.Index(hs, nd); i >= 0 {
-		r := haystack + uintptr(i)
-		return r
+	hs := unsafe.Slice((*byte)(unsafe.Pointer(haystack)), strlen(haystack))
+	nd := unsafe.Slice((*byte)(unsafe.Pointer(needle)), strlen(needle))
+	if i := bytes.Index(hs, nd); i >= 0 {
+		return haystack + uintptr(i)
 	}
 
 	return 0
@@ -2162,41 +2164,268 @@ func Xatol(t *TLS, nptr uintptr) long {
 	}
 }
 
+// cstrPrefix returns the length of the common prefix of the C string p and s.
+func cstrPrefix(p uintptr, s string) int {
+	var i int
+	for i < len(s) && *(*byte)(unsafe.Pointer(p + uintptr(i))) == s[i] {
+		i++
+	}
+	return i
+}
+
+type tzLocation struct {
+	tz  string
+	loc *gotime.Location
+}
+
+// localLocation caches the location of the last TZ value, loading it reads the zoneinfo file.
+var localLocation atomic.Pointer[tzLocation]
+
 func getLocalLocation() (loc *gotime.Location) {
-	loc = gotime.Local
-	if r := getenv(Environ(), "TZ"); r != 0 {
-		zname := GoString(r)
-		zone, off := parseZone(zname)
-		loc = gotime.FixedZone(zone, -off)
-		loc2, _ := gotime.LoadLocation(zname)
-		if loc2 != nil {
-			loc = loc2
+	r := getenv(Environ(), "TZ")
+	if r == 0 {
+		return gotime.Local
+	}
+
+	if c := localLocation.Load(); c != nil && cstrPrefix(r, c.tz) == len(c.tz) && *(*byte)(unsafe.Pointer(r + uintptr(len(c.tz)))) == 0 {
+		return c.loc
+	}
+
+	zname := GoString(r)
+	switch loc2, err := gotime.LoadLocation(strings.TrimPrefix(zname, ":")); {
+	case err == nil:
+		// Try a zone name first: parseZone exits at characters like '-' that valid names
+		// such as America/Port-au-Prince contain. POSIX lets a name follow a colon.
+		loc = loc2
+	case strings.HasPrefix(zname, ":"):
+		// A colon never starts a POSIX rule, so a name that does not load means UTC.
+		loc = gotime.UTC
+	default:
+		if l, ok := posixTZLocation(zname); ok {
+			// A POSIX rule such as EST5EDT,M3.2.0,M11.1.0, DST transitions included.
+			loc = l
+			break
+		}
+
+		// Not a rule the time package accepts: keep the standard time part, or use
+		// UTC rather than end the process over a malformed TZ.
+		if zone, off, ok := parseZone(zname); ok {
+			loc = gotime.FixedZone(zone, -off)
+		} else {
+			loc = gotime.UTC
 		}
 	}
+	localLocation.Store(&tzLocation{tz: zname, loc: loc})
 	return loc
+}
 
+// posixTZBlock is one section of a TZif version 2 file: the header, with no
+// transitions and one local time type, then that type, offset 1 s and an empty
+// name. posixTZLocation uses it for both the 32-bit and the 64-bit section.
+var posixTZBlock = []byte{
+	'T', 'Z', 'i', 'f', '2', 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+	0, 0, 0, 0, // UT/local indicators
+	0, 0, 0, 0, // standard/wall indicators
+	0, 0, 0, 0, // leap seconds
+	0, 0, 0, 0, // transitions
+	0, 0, 0, 1, // local time types
+	0, 0, 0, 1, // abbreviation bytes
+	0, 0, 0, 1, 0, 0, // offset 1 s, not DST, abbreviation at 0
+	0, // empty abbreviation
+}
+
+// posixTZLocation returns a Location for a POSIX TZ rule string such as
+// "CET-1CEST,M3.5.0,M10.5.0/3". It puts s in the footer of a TZif file without
+// transitions, which the time package evaluates for every instant, so DST
+// follows the rule. It reports false if the time package does not accept s:
+// then it falls back to the sentinel local time type.
+func posixTZLocation(s string) (*gotime.Location, bool) {
+	if s == "" || strings.ContainsRune(s, '\n') {
+		return nil, false
+	}
+
+	data := append(append([]byte(nil), posixTZBlock...), posixTZBlock...)
+	data = append(append(append(data, '\n'), s...), '\n')
+	loc, err := gotime.LoadLocationFromTZData(s, data)
+	if err != nil {
+		return nil, false
+	}
+
+	if name, off := gotime.Unix(0, 0).In(loc).Zone(); name == "" && off == 1 {
+		return nil, false
+	}
+
+	return loc, true
 }
 
 // time_t mktime(struct tm *tm);
+//
+// mktime reads tm as a local time, with fields outside their ranges, and
+// ignores tm_wday and tm_yday. A tm_isdst > 0 says DST is in effect and 0 says
+// it is not, which picks the offset of a wall time the zone repeats or skips;
+// a negative one lets the zone decide. On success mktime sets every field of tm
+// to the normalized time, as localtime_r does. If the result does not fit
+// time_t or tm_year, it returns -1, sets EOVERFLOW and leaves tm alone.
 func Xmktime(t *TLS, ptm uintptr) (r time.Time_t) {
 	if __ccgo_strace {
 		trc("t=%v ptm=%v, (%v:)", t, ptm, origin(2))
+		defer func() { trc("-> %v", r) }()
 	}
-	loc := getLocalLocation()
-	tt := gotime.Date(
-		int((*time.Tm)(unsafe.Pointer(ptm)).Ftm_year+1900),
-		gotime.Month((*time.Tm)(unsafe.Pointer(ptm)).Ftm_mon+1),
-		int((*time.Tm)(unsafe.Pointer(ptm)).Ftm_mday),
-		int((*time.Tm)(unsafe.Pointer(ptm)).Ftm_hour),
-		int((*time.Tm)(unsafe.Pointer(ptm)).Ftm_min),
-		int((*time.Tm)(unsafe.Pointer(ptm)).Ftm_sec),
-		0,
-		loc,
-	)
-	(*time.Tm)(unsafe.Pointer(ptm)).Ftm_wday = int32(tt.Weekday())
-	(*time.Tm)(unsafe.Pointer(ptm)).Ftm_yday = int32(tt.YearDay() - 1)
-	r = time.Time_t(tt.Unix())
-	return r
+	tm := (*time.Tm)(unsafe.Pointer(ptm))
+	// time.Date would normalize the fields too, but in int, which has 32 bits on
+	// 386 and arm, where tm_year INT_MAX and the carries would wrap.
+	sec, min, hour, day := int64(tm.Ftm_sec), int64(tm.Ftm_min), int64(tm.Ftm_hour), int64(tm.Ftm_mday)
+	min, sec = min+floorDiv(sec, 60), floorMod(sec, 60)
+	hour, min = hour+floorDiv(min, 60), floorMod(min, 60)
+	day, hour = day+floorDiv(hour, 24), floorMod(hour, 24)
+	year, mon := int64(tm.Ftm_year)+1900+floorDiv(int64(tm.Ftm_mon), 12), floorMod(int64(tm.Ftm_mon), 12)
+	if c := day / tmCycleDays; c != 0 {
+		day -= c * tmCycleDays
+		year += c * tmCycleYears
+	}
+	k := tmCyclesOfYear(year)
+	tt := gotime.Date(int(year-k*tmCycleYears), gotime.Month(mon)+1, int(day), int(hour), int(min), int(sec), 0, getLocalLocation())
+	if tm.Ftm_isdst >= 0 && tt.IsDST() != (tm.Ftm_isdst > 0) {
+		tt = mktimeOtherOffset(tt, tm.Ftm_isdst > 0)
+	}
+	u := tt.Unix() + k*tmCycleSecs
+	if y := int64(tt.Year()) + k*tmCycleYears - 1900; y != int64(int32(y)) || int64(time.Time_t(u)) != u {
+		t.setErrno(errno.EOVERFLOW)
+		return -1
+	}
+
+	setTm(tm, tt, k)
+	return time.Time_t(u)
+}
+
+// Go's time.Date takes, and Time.Year returns, the year as an int, which has
+// 32 bits on 386 and arm, while mktime and localtime_r reach years up to
+// tm_year INT_MAX. Times that far away are moved by whole 400-year Gregorian
+// cycles into the years 9970 to 10369, or -6430 to -6031 for the past, and
+// moved back after. A cycle is 146097 days, a whole number of weeks, so dates,
+// weekdays and leap days repeat exactly. So does the local time: that far from
+// the zone's transitions it follows the zone's yearly rule, or its first
+// offset before them.
+const (
+	tmCycleYears = 400
+	tmCycleDays  = 146097
+	tmCycleSecs  = tmCycleDays * 86400
+	tmFarYears   = 1 << 20 // well past any zone's transitions, well within 32 bits
+	tmFarSecs    = tmFarYears * 31556952
+)
+
+// tmCyclesOfYear returns the number of cycles to move year by.
+func tmCyclesOfYear(year int64) int64 {
+	switch {
+	case year > tmFarYears:
+		return (year - 9970) / tmCycleYears
+	case year < -tmFarYears:
+		return floorDiv(year+6430, tmCycleYears)
+	}
+	return 0
+}
+
+// tmCyclesOfSecs returns the number of cycles to move the time ut, in seconds
+// since the epoch, by.
+func tmCyclesOfSecs(ut int64) int64 {
+	switch {
+	case ut > tmFarSecs:
+		return ut/tmCycleSecs - 20
+	case ut < -tmFarSecs:
+		return floorDiv(ut, tmCycleSecs) + 21
+	}
+	return 0
+}
+
+func floorDiv(a, b int64) int64 {
+	q := a / b
+	if a%b != 0 && (a < 0) != (b < 0) {
+		q--
+	}
+	return q
+}
+
+func floorMod(a, b int64) int64 { return a - floorDiv(a, b)*b }
+
+// localtimeTm writes the local time at ut seconds since the epoch to tm, as
+// localtime_r does. If the time cannot be represented, because it is outside
+// the range musl accepts or its year does not fit tm_year, it writes nothing,
+// sets EOVERFLOW unless t is nil, and returns false.
+func localtimeTm(t *TLS, ut int64, tm *time.Tm) bool {
+	const max = math.MaxInt32 * 31622400 // as musl's __secs_to_tm
+	if ut >= -max && ut <= max {
+		k := tmCyclesOfSecs(ut)
+		tt := gotime.Unix(ut-k*tmCycleSecs, 0).In(getLocalLocation())
+		if y := int64(tt.Year()) + k*tmCycleYears - 1900; y == int64(int32(y)) {
+			setTm(tm, tt, k)
+			return true
+		}
+	}
+
+	if t != nil {
+		t.setErrno(errno.EOVERFLOW)
+	}
+	return false
+}
+
+// setTm writes the broken-down time tt, k cycles later, to tm, including the
+// zone fields where this struct tm has them. The year must fit tm_year.
+func setTm(tm *time.Tm, tt gotime.Time, k int64) {
+	name, off := tt.Zone()
+	tm.Ftm_sec = int32(tt.Second())
+	tm.Ftm_min = int32(tt.Minute())
+	tm.Ftm_hour = int32(tt.Hour())
+	tm.Ftm_mday = int32(tt.Day())
+	tm.Ftm_mon = int32(tt.Month() - 1)
+	tm.Ftm_year = int32(int64(tt.Year()) + k*tmCycleYears - 1900)
+	tm.Ftm_wday = int32(tt.Weekday())
+	tm.Ftm_yday = int32(tt.YearDay() - 1)
+	tm.Ftm_isdst = Bool32(tt.IsDST())
+	tmSetZone(tm, name, off)
+}
+
+var (
+	tzAbbrevMu sync.Mutex
+	tzAbbrevs  = map[string][]byte{}
+)
+
+// tzAbbrev returns the zone abbreviation s as a C string for tm_zone. Like the
+// system libcs, it keeps one copy of each abbreviation for the life of the
+// process. The copies are Go memory that the map keeps alive.
+func tzAbbrev(s string) uintptr {
+	tzAbbrevMu.Lock()
+
+	defer tzAbbrevMu.Unlock()
+
+	b, ok := tzAbbrevs[s]
+	if !ok {
+		b = append([]byte(s), 0)
+		tzAbbrevs[s] = b
+	}
+	return uintptr(unsafe.Pointer(&b[0]))
+}
+
+// mktimeOtherOffset returns the instant at which the wall clock shows what it
+// shows at tt, read with the offset of the zone period next to tt's whose DST
+// state is dst, as musl does with its opposite offset. It returns tt if neither
+// neighboring period has that state.
+func mktimeOtherOffset(tt gotime.Time, dst bool) gotime.Time {
+	_, off := tt.Zone()
+	start, end := tt.ZoneBounds()
+	var near []gotime.Time
+	if !start.IsZero() {
+		near = append(near, start.Add(-gotime.Second))
+	}
+	if !end.IsZero() {
+		near = append(near, end)
+	}
+	for _, u := range near {
+		if u = u.In(tt.Location()); u.IsDST() == dst {
+			_, o := u.Zone()
+			return tt.Add(gotime.Duration(off-o) * gotime.Second)
+		}
+	}
+	return tt
 }
 
 // char *strpbrk(const char *s, const char *accept);
@@ -2654,40 +2883,6 @@ func Xgetc(t *TLS, stream uintptr) int32 {
 	return Xfgetc(t, stream)
 }
 
-// char *fgets(char *s, int size, FILE *stream);
-func Xfgets(t *TLS, s uintptr, size int32, stream uintptr) uintptr {
-	if __ccgo_strace {
-		trc("t=%v s=%v size=%v stream=%v, (%v:)", t, s, size, stream, origin(2))
-	}
-	if size < 1 {
-		return 0
-	}
-	if size == 1 {
-		*(*byte)(unsafe.Pointer(s)) = 0
-		return s
-	}
-	var b []byte
-out:
-	for ; size > 1; size-- {
-		switch c := Xfgetc(t, stream); c {
-		case '\n':
-			b = append(b, byte(c))
-			break out
-		case stdio.EOF:
-			break out
-		default:
-			b = append(b, byte(c))
-		}
-	}
-	if len(b) == 0 {
-		return 0
-	}
-
-	b = append(b, 0)
-	copy((*RawMem)(unsafe.Pointer(s))[:len(b):len(b)], b)
-	return s
-}
-
 // void bzero(void *s, size_t n);
 func Xbzero(t *TLS, s uintptr, n types.Size_t) {
 	if __ccgo_strace {
@@ -2739,10 +2934,7 @@ func X__builtin_isunordered(t *TLS, a, b float64) int32 {
 }
 
 func AtomicLoadNUint16(ptr uintptr, memorder int32) uint16 {
-	atomicLoadStore16.Lock()
-	r := *(*uint16)(unsafe.Pointer(ptr))
-	atomicLoadStore16.Unlock()
-	return r
+	return uint16(a_load_16(ptr))
 }
 
 func PreIncAtomicInt32P(p uintptr, d int32) int32 {
