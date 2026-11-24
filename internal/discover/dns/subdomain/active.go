@@ -187,16 +187,22 @@ func testPermutations(ctx context.Context, permutations []string, resolvers []*n
 			rawResolverIdx := currentIndex % int64(len(rawResolvers))
 			rawResolver := rawResolvers[rawResolverIdx]
 
-			// Wait with the scan context before LookupHost creates DNS attempt
-			// deadlines. Keep capacity reserved through the CNAME fallback as well.
-			releaseLookup, err := utils.AcquireDNSLookupCapacity(ctx, rawResolver)
-			if err != nil {
-				return
+			// Only custom resolvers use the socket pool. System lookups retain
+			// the worker limit above instead of waiting on unrelated pool slots.
+			// For pooled lookups, wait before DNS attempt deadlines start and
+			// keep capacity reserved through the CNAME fallback.
+			releaseLookup := func() {}
+			if resolver.Dial != nil {
+				var err error
+				releaseLookup, err = utils.AcquireDNSLookupCapacity(ctx, rawResolver)
+				if err != nil {
+					return
+				}
 			}
 
 			// Capture DNS work only, excluding time waiting for capacity.
 			start := time.Now()
-			_, err = resolver.LookupHost(ctx, utils.AbsoluteLookupName(testSubdomain))
+			_, err := resolver.LookupHost(ctx, utils.AbsoluteLookupName(testSubdomain))
 			// If LookupHost fails (no A/AAAA record), check for CNAME records
 			// via a raw DNS query. Go's net.LookupCNAME follows the CNAME chain
 			// and fails if the target doesn't resolve, so it can't detect dangling
