@@ -57,9 +57,11 @@ func getSubdomainsActive(ctx context.Context, domain string, subdomainList []str
 		ctx, cancel = context.WithTimeout(ctx, time.Duration(timeout)*time.Minute)
 		defer cancel()
 	}
-	resolvers := utils.GetResolvers(dnsServerAddresses, log)
-
+	ctx, closePool := utils.WithDNSConnectionPool(ctx)
+	defer closePool()
 	rawResolvers := normalizeRawResolvers(dnsServerAddresses)
+	// Preserve OS resolver selection when no explicit DNS servers are supplied.
+	resolvers := utils.GetResolvers(dnsServerAddresses, log)
 	wildcardProfileCache := map[string]wildcardDNSProfile{}
 	var recursiveWildcardErr error
 	recursiveWildcardFailures := 0
@@ -196,7 +198,7 @@ func testPermutations(ctx context.Context, permutations []string, resolvers []*n
 			// Only attempt CNAME detection on a definitive NXDOMAIN — SERVFAIL,
 			// timeouts, and other transient errors must not trigger the CNAME path.
 			if err != nil && isDNSNotFound(err) {
-				cnameTargets := lookupCNAMEs(testSubdomain, rawResolver)
+				cnameTargets := lookupCNAMEsContext(ctx, testSubdomain, rawResolver)
 				if len(cnameTargets) > 0 {
 					err = nil
 				}
@@ -250,7 +252,7 @@ func testPermutations(ctx context.Context, permutations []string, resolvers []*n
 	return validSubdomains
 }
 
-func lookupCNAMEs(subdomain string, server string) []string {
+func lookupCNAMEsContext(ctx context.Context, subdomain string, server string) []string {
 	if server == "" {
 		return nil
 	}
@@ -259,7 +261,7 @@ func lookupCNAMEs(subdomain string, server string) []string {
 	msg.SetQuestion(dns.Fqdn(subdomain), dns.TypeCNAME)
 	msg.RecursionDesired = true
 
-	resp, err := exchangeDNSWithFallback(msg, server)
+	resp, err := exchangeDNSWithFallbackContext(ctx, msg, server)
 	if err != nil || resp == nil {
 		return nil
 	}
@@ -273,13 +275,14 @@ func lookupCNAMEs(subdomain string, server string) []string {
 	return targets
 }
 
-func exchangeDNSWithFallback(msg *dns.Msg, server string) (*dns.Msg, error) {
-	return exchangeDNSWithFallbackContext(context.Background(), msg, server)
-}
-
 func exchangeDNSWithFallbackContext(ctx context.Context, msg *dns.Msg, server string) (*dns.Msg, error) {
 	udpClient := &dns.Client{Net: "udp", Timeout: 5 * time.Second}
-	resp, _, err := udpClient.ExchangeContext(ctx, msg, server)
+	var resp *dns.Msg
+	conn, err := utils.DialDNSContext(ctx, "udp", server)
+	if err == nil {
+		resp, _, err = udpClient.ExchangeWithConnContext(ctx, msg, &dns.Conn{Conn: conn})
+		_ = conn.Close()
+	}
 	if err == nil && resp != nil && !resp.Truncated {
 		return resp, nil
 	}

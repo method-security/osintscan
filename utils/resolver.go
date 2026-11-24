@@ -7,7 +7,6 @@ import (
 	"net/netip"
 	"strconv"
 	"strings"
-	"time"
 
 	svc1log "github.com/palantir/witchcraft-go-logging/wlog/svclog/svc1log"
 )
@@ -66,10 +65,7 @@ func GetResolver(dnsServerAddress string, log svc1log.Logger) *net.Resolver {
 		resolver = &net.Resolver{
 			PreferGo: true,
 			Dial: func(ctx context.Context, network, address string) (net.Conn, error) {
-				d := net.Dialer{
-					Timeout: time.Second * 10,
-				}
-				return d.DialContext(ctx, network, addr)
+				return DialDNSContext(ctx, network, addr)
 			},
 		}
 	}
