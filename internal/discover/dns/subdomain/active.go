@@ -187,9 +187,16 @@ func testPermutations(ctx context.Context, permutations []string, resolvers []*n
 			rawResolverIdx := currentIndex % int64(len(rawResolvers))
 			rawResolver := rawResolvers[rawResolverIdx]
 
-			// Capture the duration of the lookup
+			// Wait with the scan context before LookupHost creates DNS attempt
+			// deadlines. Keep capacity reserved through the CNAME fallback as well.
+			releaseLookup, err := utils.AcquireDNSLookupCapacity(ctx, rawResolver)
+			if err != nil {
+				return
+			}
+
+			// Capture DNS work only, excluding time waiting for capacity.
 			start := time.Now()
-			_, err := resolver.LookupHost(ctx, utils.AbsoluteLookupName(testSubdomain))
+			_, err = resolver.LookupHost(ctx, utils.AbsoluteLookupName(testSubdomain))
 			// If LookupHost fails (no A/AAAA record), check for CNAME records
 			// via a raw DNS query. Go's net.LookupCNAME follows the CNAME chain
 			// and fails if the target doesn't resolve, so it can't detect dangling
@@ -204,6 +211,7 @@ func testPermutations(ctx context.Context, permutations []string, resolvers []*n
 				}
 			}
 			duration := time.Since(start)
+			releaseLookup()
 
 			// Apply sleep delay if configured (in milliseconds)
 			if sleep > 0 {

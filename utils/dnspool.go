@@ -16,6 +16,7 @@ type dnsPoolKey struct{}
 type dnsSocketPool struct {
 	mu      sync.Mutex
 	buckets map[string]chan net.Conn
+	lookups map[string]chan struct{}
 	sockets map[net.Conn]struct{}
 	closed  bool
 	done    chan struct{}
@@ -24,7 +25,7 @@ type dnsSocketPool struct {
 // WithDNSConnectionPool scopes reusable UDP sockets to a scan. Close must be
 // called when the scan finishes; cancellation also closes outstanding sockets.
 func WithDNSConnectionPool(ctx context.Context) (context.Context, func()) {
-	p := &dnsSocketPool{buckets: make(map[string]chan net.Conn), sockets: make(map[net.Conn]struct{}), done: make(chan struct{})}
+	p := &dnsSocketPool{buckets: make(map[string]chan net.Conn), lookups: make(map[string]chan struct{}), sockets: make(map[net.Conn]struct{}), done: make(chan struct{})}
 	stop := context.AfterFunc(ctx, p.close)
 	return context.WithValue(ctx, dnsPoolKey{}, p), func() { stop(); p.close() }
 }
@@ -40,6 +41,42 @@ func (p *dnsSocketPool) close() {
 	for conn := range p.sockets {
 		_ = conn.Close()
 	}
+}
+
+// AcquireDNSLookupCapacity waits before LookupHost starts its per-attempt
+// timeout. Each admitted candidate may issue A and AAAA queries concurrently.
+// Hold the permit through any CNAME fallback. Wildcard probes run between
+// candidate batches, so they do not compete with these admitted lookups.
+func AcquireDNSLookupCapacity(ctx context.Context, address string) (func(), error) {
+	p, ok := ctx.Value(dnsPoolKey{}).(*dnsSocketPool)
+	if !ok {
+		return func() {}, nil
+	}
+	address = NormalizeDNSAddress(address)
+	p.mu.Lock()
+	if p.closed {
+		p.mu.Unlock()
+		return nil, net.ErrClosed
+	}
+	slots := p.lookups[address]
+	if slots == nil {
+		slots = make(chan struct{}, dnsSocketsPerResolver/2)
+		p.lookups[address] = slots
+	}
+	p.mu.Unlock()
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	case <-p.done:
+		return nil, net.ErrClosed
+	case slots <- struct{}{}:
+	}
+	if err := ctx.Err(); err != nil {
+		<-slots
+		return nil, err
+	}
+	var once sync.Once
+	return func() { once.Do(func() { <-slots }) }, nil
 }
 
 // DialDNSContext uses the scan pool for UDP, retaining ordinary TCP dialing for
